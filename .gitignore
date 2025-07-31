@@ -28,8 +28,6 @@ _site/
 
 config.yaml
 
-/scripts/config.ini
-
 /FIT_OUT
 /coros-fit
 /garmin-cn-fit
