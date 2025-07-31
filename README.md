@@ -21,17 +21,17 @@
 
 ## 参数配置说明
 
-|           参数名            |     备注      |                                       案例                                        |
-|:------------------------:|:-----------:|:-------------------------------------------------------------------------------:|
-|          SOURCE          |   数据源(从哪)   |                        分为：GARMIN_CN、GARMIN_GLOBAL、COROS                         |
-|          TARGET          |  数据目标（到哪）   |                        分为：GARMIN_CN、GARMIN_GLOBAL、COROS                         |
-| SYNC_ACTIVITY_START_TIME |  同步的数据时间节点  | 格式：%Y%m%d%H%M%S <br/>例如：20250701083001或20250701<br/>（可以指定日期与时间点或只写日期，默认0点0份1秒 ） |
-|     GARMIN_CN_EMAIL      | 佳明中国区登录帐号邮箱 |                                                                                 |
-|    GARMIN_CN_PASSWORD    |  佳明中国区登录密码  |                                                                                 |
-|   GARMIN_GLOBAL_EMAIL    | 佳明国际区登录帐号邮箱 |                                                                                 |
-|  GARMIN_GLOBAL_PASSWORD  |  佳明国际区登录密码  |                                                                                 |
-|       COROS_EMAIL        |   高驰 登录邮箱   |                                                                                 |
-|      COROS_PASSWORD      |   高驰 登录密码   |                                                                                 |
+|           参数名            |      备注      |                                       案例                                        |
+|:------------------------:|:------------:|:-------------------------------------------------------------------------------:|
+|          SOURCE          | 数据源(数据从哪里来)  |                        分为：GARMIN_CN、GARMIN_GLOBAL、COROS                         |
+|          TARGET          | 数据目标（数据到哪里去） |                        分为：GARMIN_CN、GARMIN_GLOBAL、COROS                         |
+| SYNC_ACTIVITY_START_TIME |  同步的数据时间节点   | 格式：%Y%m%d%H%M%S <br/>例如：20250701083001或20250701<br/>（可以指定日期与时间点或只写日期，默认0点0份1秒 ） |
+|     GARMIN_CN_EMAIL      | 佳明中国区登录帐号邮箱  |                                                                                 |
+|    GARMIN_CN_PASSWORD    |  佳明中国区登录密码   |                                                                                 |
+|   GARMIN_GLOBAL_EMAIL    | 佳明国际区登录帐号邮箱  |                                                                                 |
+|  GARMIN_GLOBAL_PASSWORD  |  佳明国际区登录密码   |                                                                                 |
+|       COROS_EMAIL        |   高驰 登录邮箱    |                                                                                 |
+|      COROS_PASSWORD      |   高驰 登录密码    |                                                                                 |
 
 例如你打算 ：从 佳明中国区 2025年7月1日以后的数据开始 同步到到佳明国际区，那么参数配置情况如下：
 
