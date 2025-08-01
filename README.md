@@ -14,8 +14,7 @@
 
 ## 注意，特别是第1条！
 
-<span style="color:#E4393C;font-weight:bold;">
-1：如果你的数据同步任务涉及到佳明国际区，请一定要确保运行脚本的网络环境是能够顺利访问国外网站的（原因你懂），否则会导致数据同步失败！！！！！！！</span>
+**1：如果你的数据同步任务涉及到佳明国际区，请一定要确保运行脚本的网络环境是能够顺利访问国外网站的（原因你懂），否则会导致数据同步失败！！！！！！！**
 
 2：由于高驰平台只允许单设备登录，同步期间如果打开高驰网页可能会影响到数据同步导致同步失败，同步期间不要打开网页。
 
@@ -64,19 +63,17 @@
 
 ## 运行方式
 
-参数配置优先级为：命令行参数 > 青龙环境变量 > 配置文件
+### 参数配置优先级为：命令行参数 > 青龙环境变量 > 配置文件
 
-一、你可以在本地python3环境下运行，运行前请确保python3环境已安装相关依赖包（[requirements.txt](requirements.txt)
-  ），命令行启动程序时指定参数名和参数值。
+### 一、你可以在本地python3环境下运行，运行前请确保python3环境已安装相关依赖包（[requirements.txt](requirements.txt)），命令行启动程序时指定参数名和参数值。
 - 如：python3 gear_sync.py --SOURCE GARMIN_CN --TARGET GARMIN_GLOBAL --SYNC_ACTIVITY_START_TIME 20250701
   --GARMIN_CN_EMAIL XXXX@XXXX.com --GARMIN_CN_PASSWORD *** --GARMIN_GLOBAL_EMAIL XXXX@XXXX.com
   --GARMIN_GLOBAL_PASSWORD ****
 
-二、如果你懂一点代码也可以通过修改配置文件[config.ini](scripts/config.ini)<span style="color:#E4393C;font-weight:bold;">(
-看好是ini文件，别改错了)</span>来配置参数后，将程序打包成Docker镜像，搭配系统定时任务使用Docker方式去运行。
+### 二、如果你懂一点代码也可以通过修改配置文件[config.ini](scripts/config.ini)<span style="color:#E4393C;font-weight:bold;">(看好是ini文件，别改错了)</span>来配置参数后，将程序打包成Docker镜像，搭配系统定时任务使用Docker方式去运行。
 - 参数配置示例：![参数配置文件.png](doc/%E5%8F%82%E6%95%B0%E9%85%8D%E7%BD%AE%E6%96%87%E4%BB%B6.png)
 
-三、如果有条件的话，我最最推荐的还是使用青龙面板来运行，直观、方便、易管理、易操作。（当然你既然都能docker方式运行了，那肯定也不差部署个青龙面板了，对吧！）
+### 三、如果有条件的话，我最最推荐的还是使用青龙面板来运行，直观、方便、易管理、易操作。（当然你既然都能docker方式运行了，那肯定也不差部署个青龙面板了，对吧！）
 
 - 1.使用青龙跑定时任务之前，须装依赖包（[requirements.txt](requirements.txt)）！！
 ![青龙安装依赖.png](doc/%E9%9D%92%E9%BE%99%E5%AE%89%E8%A3%85%E4%BE%9D%E8%B5%96.png)
@@ -104,6 +101,9 @@
 - [ ] 持续完善细节，尽量做到不出bug。
 - [ ] 根据运动类型筛选同步数据，例如只同步跑步数据、只同步骑行数据等。
 - [ ] GitHub Actions 运行方式。
+
+## 免责声明
+- 该工具仅限用于个人学习和研究使用，不得用于任何商业或者非法用途。如有任何问题可Email：cwwcnpds@gmail.com 联系我删除。
 
 ## 最后真的再次感谢XiaoSiHwang大佬的开源项目，让我在该脚本开发过程中参考了很多代码！！！
 
