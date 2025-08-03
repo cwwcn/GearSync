@@ -5,8 +5,10 @@ import asyncio
 import os
 import sys
 
-from ...notify import send
-
+# 获取项目根目录路径
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
+import notify
 
 CURRENT_DIR = os.path.split(os.path.abspath(__file__))[0]  # 当前目录
 config_path = CURRENT_DIR.rsplit('/', 1)[0]  # 上三级目录
@@ -16,7 +18,6 @@ from conf.config import DB_DIR, SYS_CONFIG
 from db.sqlite_db import SqliteDB
 from utils.aestools import AESCipher
 from rq_connect import RQConnect
-
 
 import ddddocr
 
@@ -75,14 +76,14 @@ class RqSgin:
                 status = result['status']
                 ## 判断是否签到成功
                 if status == 1:
-                    send("RQ自动签到", f"RQ账号{RQ_CONFIG['RQ_EMAIL']}：签到成功！！！！")
+                    notify.send("RQ自动签到", f"RQ账号{RQ_CONFIG['RQ_EMAIL']}：签到成功！！！！")
                     return
                 ## 判断验证码是否错误
                 elif status == 10011:
                     pass
                 ## 判断是否已经签到了
                 elif status == 10009:
-                    send("RQ自动签到：", f"RQ账号{RQ_CONFIG['RQ_EMAIL']}：今日已签到成功，无需再次签到！！")
+                    notify.send("RQ自动签到：", f"RQ账号{RQ_CONFIG['RQ_EMAIL']}：今日已签到成功，无需再次签到！！")
                     return
                 i += 1
                 time.sleep(1)
