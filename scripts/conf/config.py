@@ -20,7 +20,7 @@ SYNC_CONFIG = {
 
 # AESKEY 填写随机的字母符合数字长度不能超过32位
 SYS_CONFIG = {
-    'AESKEY': 'chenzhuochenweiwen'
+    'AESKEY': ''
 }
 
 
@@ -53,6 +53,7 @@ def get_argv():
     parser.add_argument("--GARMIN_CN_PASSWORD", default="")
     parser.add_argument("--COROS_EMAIL", default="")
     parser.add_argument("--COROS_PASSWORD", default="")
+    parser.add_argument("--AESKEY", default="")
     return parser.parse_args()
 
 
@@ -67,6 +68,15 @@ for k in SYNC_CONFIG:
         logger.warning(f"fill config value {k} = {str(SYNC_CONFIG[k])} from argv")
     elif os.getenv(k):
         SYNC_CONFIG[k] = os.getenv(k)
+        # logger.warning(f"fill config value {k} = {str(SYNC_CONFIG[k])} from env")
+    # 否则使用从配置文件加载的值或默认空值
+
+for k in SYS_CONFIG:
+    if argv.__dict__.get(k):
+        SYS_CONFIG[k] = argv.__dict__.get(k)
+        logger.warning(f"fill config value {k} = {str(SYNC_CONFIG[k])} from argv")
+    elif os.getenv(k):
+        SYS_CONFIG[k] = os.getenv(k)
         # logger.warning(f"fill config value {k} = {str(SYNC_CONFIG[k])} from env")
     # 否则使用从配置文件加载的值或默认空值
 
