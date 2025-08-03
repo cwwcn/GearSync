@@ -5,7 +5,7 @@ import asyncio
 import os
 import sys
 
-from notify import send
+from ...notify import send
 
 
 CURRENT_DIR = os.path.split(os.path.abspath(__file__))[0]  # 当前目录
