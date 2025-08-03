@@ -14,7 +14,7 @@ CURRENT_DIR = os.path.split(os.path.abspath(__file__))[0]  # 当前目录
 config_path = CURRENT_DIR.rsplit('/', 1)[0]  # 上三级目录
 sys.path.append(config_path)
 
-from conf.config import DB_DIR, SYS_CONFIG
+from conf.config import DB_DIR, RQ_CONFIG
 from db.sqlite_db import SqliteDB
 from utils.aestools import AESCipher
 from rq_connect import RQConnect
@@ -24,12 +24,6 @@ import ddddocr
 ocr = ddddocr.DdddOcr(beta=True, show_ad=False)
 
 TIME_OUT = httpx.Timeout(1000.0, connect=1000.0)
-
-RQ_CONFIG = {
-    "RQ_EMAIL": '',
-    "RQ_PASSWORD": '',
-}
-
 
 class RqSgin:
     def __init__(self, userId, token):
@@ -212,16 +206,10 @@ class AESKEYTooLongExceptin(Exception):
 if __name__ == "__main__":
     db_name = 'rq.db'
 
-    # 首先读取 面板变量 或者 github action 运行变量
-    for k in RQ_CONFIG:
-        if os.getenv(k):
-            v = os.getenv(k)
-            RQ_CONFIG[k] = v
-
     ## AES─KEY不能超过32位
     try:
-        if len(SYS_CONFIG["AESKEY"]) > 32:
-            raise AESKEYTooLongExceptin(f"AES key must be no more than 32 characters long", len(SYS_CONFIG["AESKEY"]))
+        if len(RQ_CONFIG["AESKEY"]) > 32:
+            raise AESKEYTooLongExceptin(f"AES key must be no more than 32 characters long", len(RQ_CONFIG["AESKEY"]))
     except AESKEYTooLongExceptin as e_result:
         print(e_result)
 
@@ -237,6 +225,6 @@ if __name__ == "__main__":
         initRQDB(rqdbpath)
     loop = asyncio.get_event_loop()
     future = asyncio.ensure_future(
-        rq_sigin(RQ_CONFIG['RQ_EMAIL'], RQ_CONFIG['RQ_PASSWORD'], SYS_CONFIG["AESKEY"])
+        rq_sigin(RQ_CONFIG['RQ_EMAIL'], RQ_CONFIG['RQ_PASSWORD'], RQ_CONFIG["AESKEY"])
     )
     loop.run_until_complete(future)

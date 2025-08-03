@@ -54,7 +54,6 @@ typing_extensions==4.8.0
 urllib3==2.5.0
 webdav4==0.9.8
 yarl==1.18.0
-
 appnope==0.1.4
 asttokens==2.4.1
 backcall==0.2.0
@@ -92,7 +91,7 @@ pandocfilters==1.5.1
 parso==0.8.4
 pexpect==4.9.0
 pickleshare==0.7.5
-pillow==10.3.0
+pillow==11.3.0
 pipreqs==0.5.0
 platformdirs==4.2.1
 prompt-toolkit==3.0.43

@@ -18,9 +18,10 @@ SYNC_CONFIG = {
     "COROS_PASSWORD": ''
 }
 
-# AESKEY 填写随机的字母符合数字长度不能超过32位
-SYS_CONFIG = {
-    'AESKEY': ''
+RQ_CONFIG = {
+    'AESKEY': '',
+    "RQ_EMAIL": '',
+    "RQ_PASSWORD": '',
 }
 
 
@@ -38,9 +39,8 @@ def load_config_from_file():
                 config_key = key.upper()
                 if config_key in SYNC_CONFIG:
                     SYNC_CONFIG[config_key] = config[section][key]
-                    # 检查是否在SYS_CONFIG中
-                elif config_key in SYS_CONFIG:
-                    SYS_CONFIG[config_key] = config[section][key]
+                elif config_key in config_key:
+                    RQ_CONFIG[config_key] = config[section][key]
         return True
     return False
 
@@ -56,7 +56,10 @@ def get_argv():
     parser.add_argument("--GARMIN_CN_PASSWORD", default="")
     parser.add_argument("--COROS_EMAIL", default="")
     parser.add_argument("--COROS_PASSWORD", default="")
+    # 添加RQ_CONFIG相关的命令行参数
     parser.add_argument("--AESKEY", default="")
+    parser.add_argument("--RQ_EMAIL", default="")
+    parser.add_argument("--RQ_PASSWORD", default="")
     return parser.parse_args()
 
 
@@ -74,13 +77,14 @@ for k in SYNC_CONFIG:
         # logger.warning(f"fill config value {k} = {str(SYNC_CONFIG[k])} from env")
     # 否则使用从配置文件加载的值或默认空值
 
-for k in SYS_CONFIG:
+# 添加从环境变量或命令行参数加载RQ_CONFIG
+for k in RQ_CONFIG:
     if argv.__dict__.get(k):
-        SYS_CONFIG[k] = argv.__dict__.get(k)
-        logger.warning(f"fill config value {k} = {str(SYNC_CONFIG[k])} from argv")
+        RQ_CONFIG[k] = argv.__dict__.get(k)
+        logger.warning(f"fill config value {k} = {str(RQ_CONFIG[k])} from argv")
     elif os.getenv(k):
-        SYS_CONFIG[k] = os.getenv(k)
-        # logger.warning(f"fill config value {k} = {str(SYNC_CONFIG[k])} from env")
+        RQ_CONFIG[k] = os.getenv(k)
+        # logger.warning(f"fill config value {k} = {str(RQ_CONFIG[k])} from env")
     # 否则使用从配置文件加载的值或默认空值
 
 # getting content root directory
@@ -93,4 +97,3 @@ GARMIN_GLOBAL_FIT_DIR = os.path.join(parent, "garmin-global-fit")
 GARMIN_CN_FIT_DIR = os.path.join(parent, "garmin-cn-fit")
 COROS_FIT_DIR = os.path.join(parent, "coros-fit")
 DB_DIR = os.path.join(parent, "db")
-
