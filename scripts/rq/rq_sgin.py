@@ -5,6 +5,8 @@ import asyncio
 import os
 import sys
 
+import notify
+
 CURRENT_DIR = os.path.split(os.path.abspath(__file__))[0]  # 当前目录
 config_path = CURRENT_DIR.rsplit('/', 1)[0]  # 上三级目录
 sys.path.append(config_path)
@@ -13,7 +15,7 @@ from conf.config import DB_DIR, AESKEY
 from db.sqlite_db import SqliteDB
 from utils.aestools import AESCipher
 from rq_connect import RQConnect
-import notify
+
 
 import ddddocr
 
