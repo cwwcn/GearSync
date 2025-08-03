@@ -15,7 +15,12 @@ SYNC_CONFIG = {
     'GARMIN_CN_EMAIL': '',
     'GARMIN_CN_PASSWORD': '',
     "COROS_EMAIL": '',
-    "COROS_PASSWORD": '',
+    "COROS_PASSWORD": ''
+}
+
+# AESKEY 填写随机的字母符合数字长度不能超过32位
+SYS_CONFIG = {
+    'AESKEY': 'chenzhuochenweiwen'
 }
 
 
@@ -75,3 +80,5 @@ GARMIN_GLOBAL_FIT_DIR = os.path.join(parent, "garmin-global-fit")
 GARMIN_CN_FIT_DIR = os.path.join(parent, "garmin-cn-fit")
 COROS_FIT_DIR = os.path.join(parent, "coros-fit")
 DB_DIR = os.path.join(parent, "db")
+
+AESKEY = SYS_CONFIG['AESKEY']
