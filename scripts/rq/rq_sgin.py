@@ -8,7 +8,8 @@ import sys
 # 获取项目根目录路径
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, project_root)
-import notify
+# 修改导入路径，引用scripts目录下的notify模块
+from scripts import notify
 
 CURRENT_DIR = os.path.split(os.path.abspath(__file__))[0]  # 当前目录
 config_path = CURRENT_DIR.rsplit('/', 1)[0]  # 上三级目录
