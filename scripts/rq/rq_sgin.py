@@ -25,8 +25,8 @@ ocr = ddddocr.DdddOcr(beta=True, show_ad=False)
 TIME_OUT = httpx.Timeout(1000.0, connect=1000.0)
 
 RQ_CONFIG = {
-    "RQ_EMAIL": 'cwwcn@icloud.com',
-    "RQ_PASSWORD": 'Cl2780303',
+    "RQ_EMAIL": '',
+    "RQ_PASSWORD": '',
 }
 
 
