@@ -38,6 +38,9 @@ def load_config_from_file():
                 config_key = key.upper()
                 if config_key in SYNC_CONFIG:
                     SYNC_CONFIG[config_key] = config[section][key]
+                    # 检查是否在SYS_CONFIG中
+                elif config_key in SYS_CONFIG:
+                    SYS_CONFIG[config_key] = config[section][key]
         return True
     return False
 
@@ -91,4 +94,3 @@ GARMIN_CN_FIT_DIR = os.path.join(parent, "garmin-cn-fit")
 COROS_FIT_DIR = os.path.join(parent, "coros-fit")
 DB_DIR = os.path.join(parent, "db")
 
-AESKEY = SYS_CONFIG['AESKEY']

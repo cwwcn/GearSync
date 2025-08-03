@@ -5,13 +5,14 @@ import asyncio
 import os
 import sys
 
-import notify
+from notify import send
+
 
 CURRENT_DIR = os.path.split(os.path.abspath(__file__))[0]  # 当前目录
 config_path = CURRENT_DIR.rsplit('/', 1)[0]  # 上三级目录
 sys.path.append(config_path)
 
-from conf.config import DB_DIR, AESKEY
+from conf.config import DB_DIR, SYS_CONFIG
 from db.sqlite_db import SqliteDB
 from utils.aestools import AESCipher
 from rq_connect import RQConnect
@@ -74,14 +75,14 @@ class RqSgin:
                 status = result['status']
                 ## 判断是否签到成功
                 if status == 1:
-                    notify.send("RQ自动签到", f"RQ账号{RQ_CONFIG['RQ_EMAIL']}：签到成功！！！！")
+                    send("RQ自动签到", f"RQ账号{RQ_CONFIG['RQ_EMAIL']}：签到成功！！！！")
                     return
                 ## 判断验证码是否错误
                 elif status == 10011:
                     pass
                 ## 判断是否已经签到了
                 elif status == 10009:
-                    notify.send("RQ自动签到：", f"RQ账号{RQ_CONFIG['RQ_EMAIL']}：今日已签到成功，无需再次签到！！")
+                    send("RQ自动签到：", f"RQ账号{RQ_CONFIG['RQ_EMAIL']}：今日已签到成功，无需再次签到！！")
                     return
                 i += 1
                 time.sleep(1)
@@ -218,8 +219,8 @@ if __name__ == "__main__":
 
     ## AES─KEY不能超过32位
     try:
-        if len(AESKEY) > 32:
-            raise AESKEYTooLongExceptin(f"AES key must be no more than 32 characters long", len(AESKEY))
+        if len(SYS_CONFIG["AESKEY"]) > 32:
+            raise AESKEYTooLongExceptin(f"AES key must be no more than 32 characters long", len(SYS_CONFIG["AESKEY"]))
     except AESKEYTooLongExceptin as e_result:
         print(e_result)
 
@@ -235,6 +236,6 @@ if __name__ == "__main__":
         initRQDB(rqdbpath)
     loop = asyncio.get_event_loop()
     future = asyncio.ensure_future(
-        rq_sigin(RQ_CONFIG['RQ_EMAIL'], RQ_CONFIG['RQ_PASSWORD'], AESKEY)
+        rq_sigin(RQ_CONFIG['RQ_EMAIL'], RQ_CONFIG['RQ_PASSWORD'], SYS_CONFIG["AESKEY"])
     )
     loop.run_until_complete(future)
