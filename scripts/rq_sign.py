@@ -194,21 +194,21 @@ def initRQDB(rqdbpath):
     rq_user_db.init_database()
 
 
-class AESKEYTooLongExceptin(Exception):
-    """this is user's Exception for check the length of name """
-
-    def __init__(self, meeasge, lens):
-        self.meeasge = meeasge
-        self.lens = lens
-
-    def __str__(self):
-        logger.info(f"AES key must be either 16, 24, or 32 bytes long, current AES Key length is {str(self.lens)}")
+# class AESKEYTooLongExceptin(Exception):
+#     """this is user's Exception for check the length of name """
+#
+#     def __init__(self, meeasge, lens):
+#         self.meeasge = meeasge
+#         self.lens = lens
+#
+#     def __str__(self):
+#         logger.info(f"AES key must be either 16, 24, or 32 characters long, current AES Key length is {str(self.lens)}")
 
 
 def main():
     # 检查必需的配置参数
     required_configs = {
-        "AESKEY": "AESKEY is required for RQ sign-in.  Please set AESKEY parameter before running the program.",
+        "AESKEY": "AESKEY is required for RQ sign-in. Please set AESKEY parameter before running the program.",
         "RQ_EMAIL": "RQ password is required for RQ sign-in. Please set RQ_EMAIL value before running the program.",
         "RQ_PASSWORD": "RQ email is required for RQ sign-in. Please set RQ_PASSWORD value before running the program."
     }
@@ -218,13 +218,12 @@ def main():
             logger.info(error_message)
             return
 
+    aes_key_length = len(RQ_CONFIG["AESKEY"])
+    if aes_key_length > 32:
+        logger.info(
+            f"Invalid AES key length: {aes_key_length} characters. The maximum length of the AESKEY cannot exceed 32 characters, but preferably 16 or 24 or 32 characters. please adjust to a valid length.")
+        return
     db_name = 'rq.db'
-    ## AES─KEY不能超过32位
-    try:
-        if len(RQ_CONFIG["AESKEY"]) > 32:
-            raise AESKEYTooLongExceptin(f"AES key must be no more than 32 characters long", len(RQ_CONFIG["AESKEY"]))
-    except AESKEYTooLongExceptin as e_result:
-        logger.info(e_result)
 
     ## 判断存储数据文件夹是否存在
     if not os.path.exists(DB_DIR):
