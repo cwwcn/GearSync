@@ -193,18 +193,6 @@ def initRQDB(rqdbpath):
     rq_user_db = RQUserDB(rqdbpath)
     rq_user_db.init_database()
 
-
-# class AESKEYTooLongExceptin(Exception):
-#     """this is user's Exception for check the length of name """
-#
-#     def __init__(self, meeasge, lens):
-#         self.meeasge = meeasge
-#         self.lens = lens
-#
-#     def __str__(self):
-#         logger.info(f"AES key must be either 16, 24, or 32 characters long, current AES Key length is {str(self.lens)}")
-
-
 def main():
     # 检查必需的配置参数
     required_configs = {
