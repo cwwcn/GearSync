@@ -3,7 +3,8 @@ from gear_sync import getDbClient, logger
 from conf.config import SYNC_CONFIG
 from garmin.garmin_cn_client import GarminCNClient
 from coros.coros_client import CorosClient
-
+from utils import notify
+from datetime import datetime
 
 def main():
     # 检查必需的配置参数
@@ -36,8 +37,9 @@ def main():
     corosClient.login()
     logger.info(f"Coros account {corosClient.email} logged in successfully!")
 
-    corosClient.uploadToGarmin(garminCNClient, db, 'COROS', 'GARMIN_CN')
-
+    sync_result = corosClient.uploadToGarmin(garminCNClient, db, 'COROS', 'GARMIN_CN')
+    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    notify.send("高驰同步数据到佳明中国区：", f"{current_time}，{sync_result["message"]}")
 
 if __name__ == "__main__":
     main()

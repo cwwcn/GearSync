@@ -217,6 +217,11 @@ class GarminCNClient:
                 file_path_list.append(un_sync_info)
             except Exception as err:
                 logger.warning(err)
+
+        # 初始化计数器
+        total_sync_count = len(un_sync_id_list)
+        success_count = 0
+
         for index, un_sync_info in enumerate(file_path_list, start=1):
             try:
                 # 添加动态序数日志
@@ -257,6 +262,7 @@ class GarminCNClient:
                             os.path.join(GARMIN_CN_FIT_DIR, filename)
                     # 删除zip包
                     os.remove(zip_file_path)
+                    success_count += 1  # 增加成功计数
                 else:
                     logger.warning(f"Upload garmin_cn {un_sync_id} to coros error inside, status {upload_result}")
             except Exception as err:
@@ -264,6 +270,20 @@ class GarminCNClient:
                 db.updateExceptionSyncStatus(un_sync_info["un_sync_id"], source, target)
                 logger.warning(f'sync garmin ${un_sync_info["un_sync_id"]} exception.')
 
+        # 计算失败条数
+        failed_count = total_sync_count - success_count
+        # 返回同步统计信息
+        if failed_count > 0:
+            notifyInfo = f"同步任务执行完成，本次共同步{total_sync_count}条数据，成功同步{success_count}条，{failed_count}条数据同步失败。"
+        else:
+            notifyInfo = f"同步任务执行完成，成功同步{total_sync_count}条数据。"
+
+        return {
+            "message": notifyInfo,
+            "total": total_sync_count,
+            "success": success_count,
+            "failed": failed_count
+        }
     @login
     def uploadToGarminGlobal(self, garminGlobalClient, db, source, target):
         all_activities = self.getAllActivities()
@@ -279,6 +299,11 @@ class GarminCNClient:
             logger.warning("has no un garmin_cn coros activities.")
             exit()
         logger.warning(f"has {len(un_sync_id_list)} un sync garmin_cn activities.")
+
+        # 初始化计数器
+        total_sync_count = len(un_sync_id_list)
+        success_count = 0
+
         # 在循环开始前添加索引跟踪
         for index, un_sync_id in enumerate(un_sync_id_list, start=1):
             try:
@@ -308,6 +333,7 @@ class GarminCNClient:
                         if upload_result.status_code == 202:
                             logger.info(f"Upload garmin_cn activity {un_sync_id} to garmin_global success.")
                             self.update_db_status(db, un_sync_id, source, target)
+                            success_count += 1
                         else:
                             responseData = json.loads(upload_result.text)
                             messages = responseData['detailedImportResult']['failures'][0]['messages']
@@ -318,6 +344,7 @@ class GarminCNClient:
                             if '202' == str(code):
                                 logger.info(f"Upload garmin_cn activity {un_sync_id} to garmin_global success.")
                                 self.update_db_status(db, un_sync_id, source, target)
+                                success_count += 1
                     except Exception as err:
                         # db.updateExceptionSyncStatus(un_sync_id, source, target)
                         logger.warning(f"Upload garmin_cn {un_sync_id} to garmin_global error inside: {err}")
@@ -325,6 +352,19 @@ class GarminCNClient:
                     logger.warning(f"No file found in zip for activity {un_sync_id}")
             except Exception as err:
                 logger.warning(f"download garmin_cn {un_sync_id} activity fail: {err}")
+        # 计算失败条数
+        failed_count = total_sync_count - success_count
+        if failed_count > 0:
+            notifyInfo = f"同步任务执行完成，本次共同步{total_sync_count}条数据，成功同步{success_count}条，{failed_count}条数据同步失败。"
+        else:
+            notifyInfo = f"同步任务执行完成，成功同步{total_sync_count}条数据。"
+
+        return {
+            "message": notifyInfo,
+            "total": total_sync_count,
+            "success": success_count,
+            "failed": failed_count
+        }
 
     @staticmethod
     def update_db_status(db, un_sync_id, source, target):

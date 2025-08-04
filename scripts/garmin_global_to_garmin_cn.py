@@ -3,6 +3,9 @@ from gear_sync import getDbClient, logger
 from conf.config import SYNC_CONFIG
 from garmin.garmin_global_client import GarminGlobalClient
 from garmin.garmin_cn_client import GarminCNClient
+from datetime import datetime
+
+from utils import notify
 
 
 def main():
@@ -33,7 +36,10 @@ def main():
     GARMIN_GLOBAL_PASSWORD = SYNC_CONFIG["GARMIN_GLOBAL_PASSWORD"]
     garminGlobalClient = GarminGlobalClient(GARMIN_GLOBAL_EMAIL, GARMIN_GLOBAL_PASSWORD)
 
-    garminGlobalClient.uploadToGarminCN(garminCNClient, db, 'GARMIN_GLOBAL', 'GARMIN_CN')
+    sync_result = garminGlobalClient.uploadToGarminCN(garminCNClient, db, 'GARMIN_GLOBAL', 'GARMIN_CN')
+    # 返回同步统计信息
+    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    notify.send("佳明国际区同步数据到佳明中国区：", f"{current_time}，{sync_result["message"]}")
 
 
 if __name__ == "__main__":

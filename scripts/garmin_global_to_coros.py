@@ -3,6 +3,9 @@ from gear_sync import getDbClient, logger
 from conf.config import SYNC_CONFIG
 from garmin.garmin_global_client import GarminGlobalClient
 from coros.coros_client import CorosClient
+from datetime import datetime
+
+from utils import notify
 
 
 def main():
@@ -36,7 +39,10 @@ def main():
     GARMIN_GLOBAL_PASSWORD = SYNC_CONFIG["GARMIN_GLOBAL_PASSWORD"]
     garminGlobalClient = GarminGlobalClient(GARMIN_GLOBAL_EMAIL, GARMIN_GLOBAL_PASSWORD)
 
-    garminGlobalClient.upload_to_coros(corosClient, db, 'GARMIN_GLOBAL', 'COROS')
+    sync_result = garminGlobalClient.upload_to_coros(corosClient, db, 'GARMIN_GLOBAL', 'COROS')
+    # 返回同步统计信息
+    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    notify.send("佳明国际区同步数据到高驰：", f"{current_time}，{sync_result["message"]}")
 
 
 if __name__ == "__main__":

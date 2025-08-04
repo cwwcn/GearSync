@@ -235,6 +235,11 @@ class CorosClient:
             logger.warning("has no un sync coros activities.")
             exit()
         logger.warning(f"has {len(un_sync_id_list)} un sync coros activities.")
+
+        # 初始化计数器
+        total_sync_count = len(un_sync_id_list)
+        success_count = 0
+
         # 在循环开始前添加索引跟踪
         for index, un_sync_id in enumerate(un_sync_id_list, start=1):
             try:
@@ -258,6 +263,7 @@ class CorosClient:
                     if upload_result.status_code == 202:
                         logger.info(f"Upload coros {un_sync_id} to garmin success.")
                         self.update_db_status(db, un_sync_id, source, target)
+                        success_count += 1  # 增加成功计数
                     else:
                         responseData = json.loads(upload_result.text)
                         messages = responseData['detailedImportResult']['failures'][0]['messages']
@@ -267,17 +273,34 @@ class CorosClient:
                             f"Upload coros {un_sync_id} to garmin fake fail: (the status_code is {code}, the content is {content})")
                         if '202' == str(code):
                             self.update_db_status(db, un_sync_id, source, target)
+                            success_count += 1  # 增加成功计数
                 except Exception as e:
                     logger.warning(f"Upload coros {un_sync_id} to garmin error inside: {e}")
             except Exception as err:
                 logger.warning(f"download coros {un_sync_id} activity fail: {err}")
+
+        # 计算失败条数
+        failed_count = total_sync_count - success_count
+        # 返回同步统计信息
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        if failed_count > 0:
+            notifyInfo = f"同步任务执行完成，本次共同步{total_sync_count}条数据，成功同步{success_count}条，{failed_count}条数据同步失败。"
+        else:
+            notifyInfo = f"同步任务执行完成，成功同步{total_sync_count}条数据。"
+
+        return {
+            "message": notifyInfo,
+            "total": total_sync_count,
+            "success": success_count,
+            "failed": failed_count
+        }
 
     # 更新数据库同步状态
     @staticmethod
     def update_db_status(db, un_sync_id, source, target):
         try:
             db.updateSyncStatus(un_sync_id, source, target)
-            logger.info(f"sync coros activity {un_sync_id} upload to garmin success, and the db has been sync.")
+            logger.info(f"sync coros activity {un_sync_id} upload to garmin success, and the db has been updated.")
         except Exception as err:
             print(err)
             db.updateExceptionSyncStatus(un_sync_id, source, target)
