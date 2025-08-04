@@ -21,14 +21,13 @@ SYNC_CONFIG = {
 RQ_CONFIG = {
     'AESKEY': '',
     "RQ_EMAIL": '',
-    "RQ_PASSWORD": '',
+    "RQ_PASSWORD": ''
 }
 
 # 在 config.py 中添加
 NOTIFY_CONFIG = {
     'DD_BOT_SECRET': '',
-    'DD_BOT_TOKEN': '',
-    # 可以添加其他通知配置项
+    'DD_BOT_TOKEN': ''
 }
 
 def load_config_from_file():
