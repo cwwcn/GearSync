@@ -9,6 +9,8 @@
 - 增加了佳明国际区和佳明中国区之间任意方向的数据同步。
 - 增加了同步数据时间节点的可选择。
 - 修复了高驰往佳明同步失败的问题。
+- 增加了钉钉机器人推送结果功能。
+- 整合了RQrun自动签到。
 - 重构了些方法，修改了些逻辑，完善了些细节...
 - 等等...
 
@@ -20,33 +22,40 @@
 
 ## 参数配置说明
 
-|           参数名            |      备注      |                                      案例                                       |
-|:------------------------:|:------------:|:-----------------------------------------------------------------------------:|
-|          SOURCE          | 数据源(数据从哪里来)  |                       分为：GARMIN_CN、GARMIN_GLOBAL、COROS                        |
-|          TARGET          | 数据目标（数据到哪里去） |                       分为：GARMIN_CN、GARMIN_GLOBAL、COROS                        |
-| SYNC_ACTIVITY_START_TIME |  同步的数据时间节点   | 格式：%Y%m%d%H%M%S <br/>例如：20250701083001或20250701<br/>（可指定日期与时间或只写日期，默认0点0分1秒 ） |
-|     GARMIN_CN_EMAIL      | 佳明中国区登录帐号邮箱  |                                                                               |
-|    GARMIN_CN_PASSWORD    |  佳明中国区登录密码   |                                                                               |
-|   GARMIN_GLOBAL_EMAIL    | 佳明国际区登录帐号邮箱  |                                                                               |
-|  GARMIN_GLOBAL_PASSWORD  |  佳明国际区登录密码   |                                                                               |
-|       COROS_EMAIL        |   高驰 登录邮箱    |                                                                               |
-|      COROS_PASSWORD      |   高驰 登录密码    |                                                                               |
+|           参数名            |                      备注                      |                                      案例                                       |
+|:------------------------:|:--------------------------------------------:|:-----------------------------------------------------------------------------:|
+|          SOURCE          |                 数据源(数据从哪里来)                  |                       分为：GARMIN_CN、GARMIN_GLOBAL、COROS                        |
+|          TARGET          |                 数据目标（数据到哪里去）                 |                       分为：GARMIN_CN、GARMIN_GLOBAL、COROS                        |
+| SYNC_ACTIVITY_START_TIME |                  同步的数据时间节点                   | 格式：%Y%m%d%H%M%S <br/>例如：20250701083001或20250701<br/>（可指定日期与时间或只写日期，默认0点0分1秒 ） |
+|     GARMIN_CN_EMAIL      |                 佳明中国区登录帐号邮箱                  |                                                                               |
+|    GARMIN_CN_PASSWORD    |                  佳明中国区登录密码                   |                                                                               |
+|   GARMIN_GLOBAL_EMAIL    |                 佳明国际区登录帐号邮箱                  |                                                                               |
+|  GARMIN_GLOBAL_PASSWORD  |                  佳明国际区登录密码                   |                                                                               |
+|       COROS_EMAIL        |                   高驰 登录邮箱                    |                                                                               |
+|      COROS_PASSWORD      |                   高驰 登录密码                    |                                                                               |
+|      DD_BOT_TOKEN      |              钉钉机器人webhook token              |                                                                               |
+|      DD_BOT_SECRET      |                 钉钉机器人secret                  |                                                                               |
+|      AESKEY      | 如果QRrun签到，这个是必填项，自定义，长度不超过32字符，最好是16、24、32字符 |                        例如随便写个aeskey：suibianxiegeaeskey                        |
+|      RQ_EMAIL      |          如果QRrun签到，这个是必填项，你RQ的登录账号           |                                                                               |
+|      RQ_PASSWORD      |          如果QRrun签到，这个是必填项，你RQ的登录密码           |                                                                               |
 
-例如你打算 ：从 佳明中国区 2025年7月1日以后的数据开始 同步到到佳明国际区，那么参数配置情况如下：
+例如你打算 ：从 佳明中国区 2025年7月1日以后的数据开始 同步到到佳明国际区，然后将执行结果推送到自己的钉钉机器人。那么参数配置情况如下：
 
-- SOURCE ： GARMIN_CN
-- TARGET ： GARMIN_GLOBAL
-- SYNC_ACTIVITY_START_TIME ： 20250701
-- GARMIN_CN_EMAIL ： XXXX@XXXX.com（你自己的佳明中国区登录邮箱号）
-- GARMIN_CN_PASSWORD ： **********（你自己的佳明中国区登录密码）
-- GARMIN_GLOBAL_EMAIL ： XXXX@XXXX.com（你自己的佳明国际区登录邮箱号）
-- GARMIN_GLOBAL_PASSWORD ： **********（你自己的佳明国际区登录密码）
+- SOURCE = GARMIN_CN
+- TARGET = GARMIN_GLOBAL
+- SYNC_ACTIVITY_START_TIME = 20250701
+- GARMIN_CN_EMAIL = XXXX@XXXX.com（你自己的佳明中国区登录邮箱号）
+- GARMIN_CN_PASSWORD = **********（你自己的佳明中国区登录密码）
+- GARMIN_GLOBAL_EMAIL = XXXX@XXXX.com（你自己的佳明国际区登录邮箱号）
+- GARMIN_GLOBAL_PASSWORD = **********（你自己的佳明国际区登录密码）
+- DD_BOT_TOKEN = *********（你钉钉机器人的token）
+- DD_BOT_SECRET = SEC*****（你钉钉机器人的secret）
 
 ## 运行启动说明
 
-脚本支持 佳明中国区、佳明国际区和高驰 三个平台相互之间总共6种同步方式。
+### 脚本支持 佳明中国区、佳明国际区和高驰 三个平台相互之间总共6种同步方式以及RQrun签到。
 
-**每种方式如不指定时间节点即为全部数据迁移！！**
+**同步数据每种方式如不指定时间节点即为全部数据迁移！！**
 
 一、你可以从以下程序入口启动，该种启动方式因明确了数据同步方向，故无需配置SOURCE和TARGET参数（就算你配了也没用），只需要配两方账号密码以及时间节点即可：
 
@@ -61,7 +70,10 @@
 
 - gear_sync.py
 
-**启动方式选择建议：如果你的需求只涉及一个方向的同步，直接使用方式二的gear_sync.py启动；如果你既要又要，那就按需选方式一里边的启动方式，这时就不要再用方式二了。**
+二、RQrun签到从这启动：
+- rqrun_sign.py
+
+**数据同步启动方式选择建议：如果你的需求只涉及一个方向的同步，直接使用方式二的gear_sync.py启动；如果你既要又要，那就按需选方式一里边的启动方式，这时就不要再用方式二了。**
 
 ## 项目运行方案
 
@@ -100,13 +112,14 @@
 ![运行效果图.png](doc/%E8%BF%90%E8%A1%8C%E6%95%88%E6%9E%9C%E5%9B%BE.png)
 
 ## 将来可能会做的
+- [x] 增加钉钉消息提醒。
 - [x] 增加RQrun自动签到。
 - [ ] 持续完善细节，尽量做到不出bug。
 - [ ] 根据运动类型筛选同步数据，例如只同步跑步数据、只同步骑行数据等。
 - [ ] GitHub Actions 运行方式。
 
 ## 免责声明
-- 该工具仅限用于个人学习和研究使用，不得用于任何商业或者非法用途。如有任何问题可Email：cwwcnpds@gmail.com 联系我删除。
+- 该工具仅限用于个人学习和研究使用，不得用于任何商业或者非法用途。如有任何问题可Email：cwwcnpds@gmail.com 与我联系！
 
 ## 最后真的再次感谢XiaoSiHwang大佬的开源项目，让我在该脚本开发过程中参考了很多代码！！！
 
