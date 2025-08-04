@@ -24,6 +24,12 @@ RQ_CONFIG = {
     "RQ_PASSWORD": '',
 }
 
+# 在 config.py 中添加
+NOTIFY_CONFIG = {
+    'DD_BOT_SECRET': '',
+    'DD_BOT_TOKEN': '',
+    # 可以添加其他通知配置项
+}
 
 def load_config_from_file():
     """从配置文件加载配置"""
@@ -39,8 +45,12 @@ def load_config_from_file():
                 config_key = key.upper()
                 if config_key in SYNC_CONFIG:
                     SYNC_CONFIG[config_key] = config[section][key]
-                elif config_key in config_key:
+                # 添加RQ的处理
+                elif config_key in RQ_CONFIG:
                     RQ_CONFIG[config_key] = config[section][key]
+                # 添加通知配置的处理
+                elif config_key in NOTIFY_CONFIG:
+                    NOTIFY_CONFIG[config_key] = config[section][key]
         return True
     return False
 
@@ -60,6 +70,9 @@ def get_argv():
     parser.add_argument("--AESKEY", default="")
     parser.add_argument("--RQ_EMAIL", default="")
     parser.add_argument("--RQ_PASSWORD", default="")
+    # 添加通知相关的命令行参数
+    parser.add_argument("--DD_BOT_SECRET", default="")
+    parser.add_argument("--DD_BOT_TOKEN", default="")
     return parser.parse_args()
 
 
@@ -74,7 +87,6 @@ for k in SYNC_CONFIG:
         logger.warning(f"fill config value {k} = {str(SYNC_CONFIG[k])} from argv")
     elif os.getenv(k):
         SYNC_CONFIG[k] = os.getenv(k)
-        # logger.warning(f"fill config value {k} = {str(SYNC_CONFIG[k])} from env")
     # 否则使用从配置文件加载的值或默认空值
 
 # 添加从环境变量或命令行参数加载RQ_CONFIG
@@ -84,8 +96,15 @@ for k in RQ_CONFIG:
         logger.warning(f"fill config value {k} = {str(RQ_CONFIG[k])} from argv")
     elif os.getenv(k):
         RQ_CONFIG[k] = os.getenv(k)
-        # logger.warning(f"fill config value {k} = {str(RQ_CONFIG[k])} from env")
     # 否则使用从配置文件加载的值或默认空值
+
+# 添加从环境变量或命令行参数加载NOTIFY_CONFIG
+for k in NOTIFY_CONFIG:
+    if argv.__dict__.get(k):
+        NOTIFY_CONFIG[k] = argv.__dict__.get(k)
+        logger.warning(f"fill config value {k} = {str(NOTIFY_CONFIG[k])} from argv")
+    elif os.getenv(k):
+        NOTIFY_CONFIG[k] = os.getenv(k)
 
 # getting content root directory
 current = os.path.dirname(os.path.realpath(__file__))

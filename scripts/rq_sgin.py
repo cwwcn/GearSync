@@ -4,12 +4,13 @@ import random
 import asyncio
 import os
 import sys
+import ddddocr
 
 # 获取项目根目录路径
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, project_root)
 # 修改导入路径，引用scripts目录下的notify模块
-from scripts import notify
+from utils import notify
 
 CURRENT_DIR = os.path.split(os.path.abspath(__file__))[0]  # 当前目录
 config_path = CURRENT_DIR.rsplit('/', 1)[0]  # 上三级目录
@@ -18,13 +19,16 @@ sys.path.append(config_path)
 from conf.config import DB_DIR, RQ_CONFIG
 from db.sqlite_db import SqliteDB
 from utils.aestools import AESCipher
-from rq_connect import RQConnect
+from rq.rq_connect import RQConnect
+from db.rq_user_db import RQUserDB
+from conf.logger_config import get_logger
 
-import ddddocr
+logger = get_logger(__name__)
 
 ocr = ddddocr.DdddOcr(beta=True, show_ad=False)
 
 TIME_OUT = httpx.Timeout(1000.0, connect=1000.0)
+
 
 class RqSgin:
     def __init__(self, userId, token):
@@ -67,18 +71,18 @@ class RqSgin:
                     data={'codes': signVerifyCode}
                 )
                 result = response.json()
-                print(result)
+                logger.info(result)
                 status = result['status']
                 ## 判断是否签到成功
                 if status == 1:
-                    notify.send("RQ自动签到", f"RQ账号{RQ_CONFIG['RQ_EMAIL']}：签到成功！！！！")
+                    notify.send("RQ自动签到", f"RQ账号 {RQ_CONFIG['RQ_EMAIL']} 签到成功！！")
                     return
                 ## 判断验证码是否错误
                 elif status == 10011:
                     pass
                 ## 判断是否已经签到了
                 elif status == 10009:
-                    notify.send("RQ自动签到：", f"RQ账号{RQ_CONFIG['RQ_EMAIL']}：今日已签到成功，无需再次签到！！")
+                    notify.send("RQ自动签到：", f"RQ账号 {RQ_CONFIG['RQ_EMAIL']} 今日已签到成功，无需再次签到！！")
                     return
                 i += 1
                 time.sleep(1)
@@ -120,16 +124,20 @@ def isKeyValid(aesChiper, text):
         return False
 
 
-async def rq_sigin(email, password, AES_KEY):
+async def rq_sigin(email, password, AES_KEY, rqdbpath):
     aesChiper = AESCipher(AES_KEY)
     # rq_login = RqLogin(email,password)
     rq_connect = RQConnect(email, password, rqdbpath)
     encrypt_email = aesChiper.encrypt(email)
+
+    # 初始化数据库管理器
+    rq_user_db = RQUserDB(rqdbpath)
+
     with SqliteDB(rqdbpath) as db:
         ## 加密email
 
         ## 查询数据库是否存在已保存的账号信息
-        query_set = db.execute('select * from user_info where email=?', (encrypt_email,)).fetchall()
+        query_set = rq_user_db.get_user_by_email(encrypt_email)
         ## 查询返回条数
         query_size = len(query_set)
         ## 判断是否唯一
@@ -153,20 +161,20 @@ async def rq_sigin(email, password, AES_KEY):
                     )
                     ## 登录一次更新一次时间保证action不掉线
                 await rqs.sigin()
-                db.execute('''UPDATE user_info SET update_date = datetime('now','localtime') ''')
+                rq_user_db.update_user_login_time(encrypt_email)
                 return
 
         ## 如果数据库中存储的账号条数大于一条默认全部删除登录后再插入一条保持数据的唯一
         elif query_size > 1:
             for row in query_set:
-                db.execute('delete from user_info where id = ? ', (row[0],))
+                rq_user_db.delete_user_by_id(row[0])
         else:
             pass
     with SqliteDB(rqdbpath) as db:
         isSuccessLogin = await rq_connect.login(aesChiper)
 
         if isSuccessLogin:
-            query_set = db.execute('select * from user_info where email=?', (encrypt_email,)).fetchall()
+            query_set = rq_user_db.get_user_by_email(encrypt_email)
             ## 加密user_id
             encrypt_user_id = query_set[0][2]
             ## 加密access_token
@@ -177,42 +185,46 @@ async def rq_sigin(email, password, AES_KEY):
             )
             await rqs.sigin()
         else:
-            print("帐号密码有误，请检查帐号密码信息！！！")
+            logger.info("帐号密码有误，请检查帐号密码信息！！！")
 
 
 ## 初始化建表
 def initRQDB(rqdbpath):
-    with SqliteDB(rqdbpath) as db:
-        db.execute('''CREATE TABLE user_info (
-            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-            email VARCHAR(100), user_id  VARCHAR(100),
-            access_token VARCHAR(100),
-            create_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            update_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )'''
-                   )
+    rq_user_db = RQUserDB(rqdbpath)
+    rq_user_db.init_database()
 
 
 class AESKEYTooLongExceptin(Exception):
-    "this is user's Exception for check the length of name "
+    """this is user's Exception for check the length of name """
 
     def __init__(self, meeasge, lens):
         self.meeasge = meeasge
         self.lens = lens
 
     def __str__(self):
-        print(f"AES key must be either 16, 24, or 32 bytes long, current AES Key length is {str(self.lens)}")
+        logger.info(f"AES key must be either 16, 24, or 32 bytes long, current AES Key length is {str(self.lens)}")
 
 
-if __name__ == "__main__":
+def main():
+    # 检查必需的配置参数
+    required_configs = {
+        "AESKEY": "AESKEY is required for RQ sign-in.  Please set AESKEY parameter before running the program.",
+        "RQ_EMAIL": "RQ password is required for RQ sign-in. Please set RQ_EMAIL value before running the program.",
+        "RQ_PASSWORD": "RQ email is required for RQ sign-in. Please set RQ_PASSWORD value before running the program."
+    }
+
+    for config_key, error_message in required_configs.items():
+        if not RQ_CONFIG.get(config_key):
+            logger.info(error_message)
+            return
+
     db_name = 'rq.db'
-
     ## AES─KEY不能超过32位
     try:
         if len(RQ_CONFIG["AESKEY"]) > 32:
             raise AESKEYTooLongExceptin(f"AES key must be no more than 32 characters long", len(RQ_CONFIG["AESKEY"]))
     except AESKEYTooLongExceptin as e_result:
-        print(e_result)
+        logger.info(e_result)
 
     ## 判断存储数据文件夹是否存在
     if not os.path.exists(DB_DIR):
@@ -224,8 +236,13 @@ if __name__ == "__main__":
     if not os.path.exists(rqdbpath):
         ## 初始化建表
         initRQDB(rqdbpath)
+
     loop = asyncio.get_event_loop()
     future = asyncio.ensure_future(
-        rq_sigin(RQ_CONFIG['RQ_EMAIL'], RQ_CONFIG['RQ_PASSWORD'], RQ_CONFIG["AESKEY"])
+        rq_sigin(RQ_CONFIG['RQ_EMAIL'], RQ_CONFIG['RQ_PASSWORD'], RQ_CONFIG["AESKEY"], rqdbpath)
     )
     loop.run_until_complete(future)
+
+
+if __name__ == "__main__":
+    main()
