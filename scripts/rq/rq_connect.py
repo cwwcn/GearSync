@@ -7,6 +7,7 @@ config_path = CURRENT_DIR.rsplit('/', 1)[0]  # 上三级目录
 sys.path.append(config_path)
 
 from db.sqlite_db import SqliteDB
+from db.rq_user_db import RQUserDB
 
 TIME_OUT = httpx.Timeout(1000.0, connect=1000.0)
 
@@ -43,39 +44,38 @@ class RQConnect:
             '''
                 登录成功逻辑
             '''
-            with SqliteDB(self.rqdbpath) as db:
-                ## 加密email
-                encrypt_email = aesChiper.encrypt(self.email)
-                ## 根据登录帐号查询数据库信息
-                query_set = db.execute('select * from user_info where email=?', (encrypt_email,)).fetchall()
-                ## 查询条数
-                query_size = len(query_set)
-                ## 加密access_token
-                encrypt_access_token = aesChiper.encrypt(result['data']['access_token'])
-                ## 加密user_id
-                encrypt_user_id = aesChiper.encrypt(str(result['data']['user_id']))
+            # 初始化数据库管理器
+            rq_user_db = RQUserDB(self.rqdbpath)
+            ## 加密email
+            encrypt_email = aesChiper.encrypt(self.email)
+            ## 根据登录帐号查询数据库信息
+            query_set = rq_user_db.get_user_by_email(encrypt_email)
+            ## 查询条数
+            query_size = len(query_set)
+            ## 加密access_token
+            encrypt_access_token = aesChiper.encrypt(result['data']['access_token'])
+            ## 加密user_id
+            encrypt_user_id = aesChiper.encrypt(str(result['data']['user_id']))
 
-                ## 如果为0说明是第一次执行脚步，则插入数据
-                if query_size == 0:
-                    db.execute('insert into user_info (email,user_id,access_token) values (?, ?, ?)',
-                               (encrypt_email, encrypt_user_id, encrypt_access_token))
-                else:
-                    if query_size == 1:
-                        '''
-                            如果为1说明是已经执行过脚步出现了Token过期情况，则需更新用户信息
-                        '''
-                        id = query_set[0][0]
-                        update_sql = f"UPDATE user_info set user_id = '{encrypt_user_id}' , access_token='{encrypt_access_token}' , email='{encrypt_email}' , update_date =  datetime('now') where id = {id}"
-                        db.execute(update_sql)
+            ## 如果为0说明是第一次执行脚步，则插入数据
+            if query_size == 0:
+                rq_user_db.insert_user(encrypt_email, encrypt_user_id, encrypt_access_token)
+            else:
+                if query_size == 1:
+                    '''
+                        如果为1说明是已经执行过脚步出现了Token过期情况，则需更新用户信息
+                    '''
+                    id = query_set[0][0]
+                    rq_user_db.update_user(encrypt_user_id, encrypt_access_token, encrypt_email, id)
 
-                    elif query_size > 1:
-                        '''
-                            如果大于1删除所有已存在的信息，然后重新插入数据保持用户唯一
-                        '''
-                        for row in query_set:
-                            db.execute('delete from user_info where id = ? ', (row[0],))
-                        db.execute('insert into user_info (email,user_id,access_token) values (?, ?, ?)',
-                                   (encrypt_email, encrypt_user_id, encrypt_access_token))
+                elif query_size > 1:
+                    '''
+                        如果大于1删除所有已存在的信息，然后重新插入数据保持用户唯一
+                    '''
+                    for row in query_set:
+                        rq_user_db.delete_user_by_id(row[0])
+                    rq_user_db.insert_user(encrypt_email, encrypt_user_id, encrypt_access_token)
+
             return True
         else:
             return False

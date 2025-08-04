@@ -28,6 +28,29 @@ class RQUserDB:
             db.execute('''UPDATE user_info SET update_date = datetime('now','localtime') WHERE email = ?''',
                        (encrypted_email,))
 
+    def insert_user(self, encrypted_email, encrypted_user_id, encrypted_access_token):
+        """
+        插入新用户信息
+        """
+        with SqliteDB(self.db_path) as db:
+            db.execute('INSERT INTO user_info (email,user_id,access_token) VALUES (?, ?, ?)',
+                       (encrypted_email, encrypted_user_id, encrypted_access_token))
+
+    def update_user(self, encrypted_user_id, encrypted_access_token, encrypted_email, user_id):
+        """
+        更新用户信息
+        """
+        with SqliteDB(self.db_path) as db:
+            update_sql = "UPDATE user_info SET user_id = ?, access_token = ?, email = ?, update_date = datetime('now') WHERE id = ?"
+            db.execute(update_sql, (encrypted_user_id, encrypted_access_token, encrypted_email, user_id))
+
+    def delete_users_by_email(self, encrypted_email):
+        """
+        根据邮箱删除所有匹配的用户记录
+        """
+        with SqliteDB(self.db_path) as db:
+            db.execute('DELETE FROM user_info WHERE email = ?', (encrypted_email,))
+
     def init_database(self):
         """
         初始化数据库表

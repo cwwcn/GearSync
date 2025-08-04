@@ -126,16 +126,14 @@ def isKeyValid(aesChiper, text):
 
 async def rq_sigin(email, password, AES_KEY, rqdbpath):
     aesChiper = AESCipher(AES_KEY)
-    # rq_login = RqLogin(email,password)
     rq_connect = RQConnect(email, password, rqdbpath)
     encrypt_email = aesChiper.encrypt(email)
 
     # 初始化数据库管理器
     rq_user_db = RQUserDB(rqdbpath)
 
+    # 用于检查现有用户状态（token有效性等）
     with SqliteDB(rqdbpath) as db:
-        ## 加密email
-
         ## 查询数据库是否存在已保存的账号信息
         query_set = rq_user_db.get_user_by_email(encrypt_email)
         ## 查询返回条数
@@ -163,13 +161,17 @@ async def rq_sigin(email, password, AES_KEY, rqdbpath):
                 await rqs.sigin()
                 rq_user_db.update_user_login_time(encrypt_email)
                 return
-
         ## 如果数据库中存储的账号条数大于一条默认全部删除登录后再插入一条保持数据的唯一
         elif query_size > 1:
             for row in query_set:
                 rq_user_db.delete_user_by_id(row[0])
+            # 继续执行到第二个with
         else:
+            # query_size == 0，首次运行
+            # 继续执行到第二个with
             pass
+
+    # 用于执行新用户登录或重新登录的逻辑
     with SqliteDB(rqdbpath) as db:
         isSuccessLogin = await rq_connect.login(aesChiper)
 
