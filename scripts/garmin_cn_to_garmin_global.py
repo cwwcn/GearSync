@@ -37,7 +37,7 @@ def main():
     sync_result = garminCNClient.uploadToGarminGlobal(garminGlobalClient, db, 'GARMIN_CN', 'GARMIN_GLOBAL')
     # 返回同步统计信息
     current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    notify.send("佳明中国区同步数据到佳明国际区：", f"{current_time}，{sync_result["message"]}")
+    notify.send("佳明中国区同步数据到佳明国际区：", f"{current_time}，{sync_result['message']}")
 
 
 if __name__ == "__main__":

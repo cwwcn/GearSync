@@ -39,7 +39,7 @@ def main():
 
     sync_result = corosClient.uploadToGarmin(garminCNClient, db, 'COROS', 'GARMIN_CN')
     current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    notify.send("高驰同步数据到佳明中国区：", f"{current_time}，{sync_result["message"]}")
+    notify.send("高驰同步数据到佳明中国区：", f"{current_time}，{sync_result['message']}")
 
 if __name__ == "__main__":
     main()
