@@ -2,7 +2,7 @@
 
 ## 致谢
 
-- 该脚本是根据XiaoSiHwang的garmin-sync-coros项目为参考重写与新增升级，非常感谢大佬的无私奉献！！！！！！
+- 该脚本是根据XiaoSiHwang/garmin-sync-coros项目为重要参考的重写与新增升级，非常感谢大佬的无私奉献！！！！！！
 
 ## 新增与修改
 
