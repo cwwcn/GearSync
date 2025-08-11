@@ -1,0 +1,60 @@
+#!/bin/bash
+
+# pre-commit 钩子 - 防止敏感信息提交到 config.ini
+# 专门针对你的配置文件格式进行检查
+
+# 获取暂存区中即将提交的文件
+STAGED_FILES=$(git diff --cached --name-only)
+
+# 检查是否修改了 config.ini 文件
+CONFIG_INI_CHANGED=false
+for file in $STAGED_FILES; do
+    if [[ "$file" == *"config.ini"* ]]; then
+        CONFIG_INI_CHANGED=true
+        break
+    fi
+done
+
+# 如果没有修改 config.ini，则跳过检查
+if [ "$CONFIG_INI_CHANGED" = false ]; then
+    exit 0
+fi
+
+echo "检测到 config.ini 文件变更，开始检查敏感信息..."
+
+# 检查暂存区中的 config.ini 是否包含敏感信息
+for file in $STAGED_FILES; do
+    if [[ "$file" == *"config.ini"* ]]; then
+        echo "检查文件: $file"
+
+        # 获取暂存区中的文件内容
+        STAGED_CONTENT=$(git show :$file 2>/dev/null)
+
+        # 检查是否有配置项被赋值（非空值）
+        # 匹配格式：key = value （value不为空）
+        SENSITIVE_LINES=$(echo "$STAGED_CONTENT" | grep -E "^[A-Za-z_]+.*=.*[^#\s]" | grep -v "^#" | grep -v "=$" | grep -v "= *$")
+
+        if [ -n "$SENSITIVE_LINES" ]; then
+            echo "❌ 阻止提交: 文件 $file 中包含敏感信息"
+            echo "以下配置项被赋值（应该为空）:"
+            echo "$SENSITIVE_LINES"
+            echo ""
+            echo "请确保所有配置项的值都为空，使用环境变量或命令行参数传递敏感信息"
+            echo "示例: GARMIN_GLOBAL_EMAIL = "
+            echo ""
+            echo "如果你确认要提交，请使用 'git commit --no-verify' 强制提交"
+            exit 1
+        fi
+
+        # 额外检查：确保所有配置项的值都为空
+        ALL_LINES=$(echo "$STAGED_CONTENT" | grep -E "^[A-Za-z_]+.*=" | grep -v "^#" | grep -v "= *$")
+        if [ -n "$ALL_LINES" ]; then
+            echo "❌ 阻止提交: 文件 $file 中包含非空配置值"
+            echo "请确保所有配置项的值都为空"
+            exit 1
+        fi
+    fi
+done
+
+echo "✅ config.ini 文件检查通过，未发现敏感信息"
+exit 0
