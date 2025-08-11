@@ -1,0 +1,35 @@
+# Virtual environment
+bin/
+include/
+lib/
+pyvenv.cfg
+
+.cache
+*.db
+*.pyc
+node_modules
+yarn-error.log
+
+/public
+# Build directory
+/build
+.DS_Store
+.sass-cache/
+_posts/
+_site/
+
+.mypy_cache
+
+/.vscode
+.idea
+.venv
+
+.Python
+
+config.yaml
+
+/FIT_OUT
+/coros-fit
+/garmin-cn-fit
+/garmin-global-fit
+
