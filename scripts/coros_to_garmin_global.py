@@ -5,6 +5,32 @@ from garmin.garmin_global_client import GarminGlobalClient
 from coros.coros_client import CorosClient
 from utils import notify
 from datetime import datetime
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, RetryCallState
+import requests
+
+
+def log_retry(retry_state: RetryCallState):
+    logger.warning(
+        f"发送钉钉消息失败: {retry_state.outcome.exception()}, 即将开始第{retry_state.attempt_number}次重试，最多尝试请求5次！")
+
+
+# 定义重试装饰器
+@retry(
+    # 最多重试5次
+    stop=stop_after_attempt(5),
+    # 指数退避策略
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    # 针对连接错误和连接超时进行重试
+    retry=retry_if_exception_type((requests.exceptions.ConnectionError, requests.exceptions.Timeout)),
+    # 记录重试次数
+    after=log_retry,
+    # 重新抛出最后一次异常
+    reraise=True
+)
+def send_notification_with_retry(title, content):
+    """带重试机制的通知发送函数"""
+    notify.send(title, content)
+
 
 def main():
     # 检查必需的配置参数
@@ -39,7 +65,13 @@ def main():
 
     sync_result = corosClient.uploadToGarmin(garminGlobalClient, db, 'COROS', 'GARMIN_GLOBAL')
     current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    notify.send("高驰同步数据到佳明国际区：", f"{current_time}，{sync_result['message']}")
+
+    # 使用带重试机制的通知发送
+    try:
+        send_notification_with_retry("高驰同步数据到佳明国际区：", f"{current_time}，{sync_result['message']}")
+    except Exception as e:
+        logger.warning(f"发送钉钉通知失败（即使重试5次后）: {e}")
+
 
 if __name__ == "__main__":
     main()

@@ -111,3 +111,4 @@ traitlets==5.14.3
 wcwidth==0.2.13
 webencodings==0.5.1
 yarg==0.1.9
+tenacity

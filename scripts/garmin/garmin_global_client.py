@@ -13,6 +13,7 @@ from utils.md5_utils import calculate_md5_file
 from .garmin_url_dict import GARMIN_URL_DICT
 from conf.config import SYNC_CONFIG, GARMIN_GLOBAL_FIT_DIR
 from conf.logger_config import get_logger
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, RetryCallState
 
 logger = get_logger(__name__)
 
@@ -117,6 +118,22 @@ class GarminGlobalClient:
         response = self.download(download_fit_activity_url)
         return response
 
+    @staticmethod
+    def log_upload_retry(retry_state: RetryCallState):
+        """记录上传重试的日志"""
+        logger.warning(
+            f"上传活动失败: {retry_state.outcome.exception()}, 即将开始第{retry_state.attempt_number}次重试，最多尝试5次！")
+
+    @retry(
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((requests.RequestException,)),
+        after=log_upload_retry,
+        reraise=True
+    )
+    def _post_with_retry(self, url, headers, files, timeout):
+        """带重试机制的POST请求"""
+        return requests.post(url, headers=headers, files=files, timeout=timeout)
     @login
     def upload_activity(self, activity_path: str):
         """Upload activity in fit format from file."""
@@ -138,17 +155,11 @@ class GarminGlobalClient:
                     url_path = GARMIN_URL_DICT["garmin_connect_upload"]
                     upload_url = f"https://connectapi.{self.garthClient.domain}{url_path}"
                     self.headers['Authorization'] = str(self.garthClient.oauth2_token)
-                return requests.post(upload_url, headers=self.headers, files=fields, timeout=90)
+                return self._post_with_retry(upload_url, self.headers, fields, 30)
             except FileNotFoundError as e:
                 logger.error(f"File not found during upload: {activity_path}")
                 raise GarminUploadException(
                     f"Activity file not found: {activity_path}",
-                    activity_path=activity_path
-                ) from e
-            except requests.RequestException as e:
-                logger.error(f"Network error during upload: {str(e)}")
-                raise GarminUploadException(
-                    f"Network error during upload: {str(e)}",
                     activity_path=activity_path
                 ) from e
             except Exception as e:
