@@ -267,7 +267,7 @@ class GarminCNClient:
                     logger.warning(f"Upload garmin_cn {un_sync_id} to coros error inside, status {upload_result}")
             except Exception as err:
                 print(err)
-                db.updateExceptionSyncStatus(un_sync_info["un_sync_id"], source, target)
+                # db.updateExceptionSyncStatus(un_sync_info["un_sync_id"], source, target)
                 logger.warning(f'sync garmin ${un_sync_info["un_sync_id"]} exception.')
 
         # 计算失败条数
