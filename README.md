@@ -87,7 +87,7 @@
 ### 二、如果你懂一点代码也可以通过修改配置文件[config.ini](scripts/config.ini)<span style="color:#E4393C;font-weight:bold;">(看好是ini文件，别改错了)</span>来配置参数后，将程序打包成Docker镜像，搭配系统定时任务使用Docker方式去运行。
 - 参数配置示例：![参数配置文件.png](doc/%E5%8F%82%E6%95%B0%E9%85%8D%E7%BD%AE%E6%96%87%E4%BB%B6.png)
 
-### 三、如果有条件的话，我最最推荐的还是使用青龙面板来运行，直观、方便、易管理、易操作。（当然你既然都能docker方式运行了，那肯定也不差部署个青龙面板了，对吧！）
+### 三、当然你既然都能docker方式运行了，那肯定也不差部署个青龙面板了，对吧！如果有条件的话，我最最推荐的还是使用青龙面板来运行，直观、方便、易管理、易操作。（如果你需要RQ签到的话，记得拉debian版本的青龙 image: whyour/qinglong:debian，普通版本有些依赖包安装不上）
 
 - 1.使用青龙跑定时任务之前，须装依赖包（[requirements.txt](requirements.txt)）！！
 ![青龙安装依赖.png](doc/%E9%9D%92%E9%BE%99%E5%AE%89%E8%A3%85%E4%BE%9D%E8%B5%96.png)
