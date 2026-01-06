@@ -1,6 +1,7 @@
 import os
 import json
 import zipfile
+import binascii
 from enum import Enum, auto
 import re
 import time
@@ -47,35 +48,43 @@ class GarminGlobalClient:
             "Nk": "NT"
         }
 
-
     ## 登录装饰器
     def login(func):
         def ware(self, *args, **kwargs):
-            if self.auth_method == 'token':
-                # OAuth token 方式
-                try:
-                    self.garthClient.username
-                except Exception:
-                    logger.warning("Garmin_Global is not logging in or the token has expired. So start loading token now!")
-                    self.garthClient.configure(domain="garmin.com")
-                    self.garthClient.loads(self.secret_string)
-                    if self.garthClient.oauth2_token.expired:
-                        self.garthClient.refresh_oauth2()
-                    logger.warning(f"Garmin_Global account {self.garthClient.username} token loaded successfully!")
-                    time.sleep(1)
-                    del self.garthClient.sess.headers['User-Agent']
-            else:
-                # 邮箱密码方式
-                try:
-                    self.garthClient.username
-                except Exception:
-                    logger.warning("Garmin_Global is not logging in. So start logging in now!")
-                    self.garthClient.configure(domain="garmin.com")
-                    self.garthClient.login(self.email, self.password)
-                    logger.warning(f"Garmin_Global account {self.email} logged in successfully!")
-                    time.sleep(1)
-                    del self.garthClient.sess.headers['User-Agent']
-            return func(self, *args, **kwargs)
+            try:
+                if self.auth_method == 'token':
+                    # OAuth token 方式
+                    try:
+                        self.garthClient.username
+                    except Exception:
+                        logger.warning(
+                            "Garmin_Global is not logging in or the token has expired. So start loading token now!")
+                        self.garthClient.configure(domain="garmin.com")
+                        self.garthClient.loads(self.secret_string)
+                        if self.garthClient.oauth2_token.expired:
+                            self.garthClient.refresh_oauth2()
+                        logger.warning(f"Garmin_Global account {self.garthClient.username} token loaded successfully!")
+                        time.sleep(1)
+                        del self.garthClient.sess.headers['User-Agent']
+                else:
+                    # 邮箱密码方式
+                    try:
+                        self.garthClient.username
+                    except Exception:
+                        logger.warning("Garmin_Global is not logging in. So start logging in now!")
+                        self.garthClient.configure(domain="garmin.com")
+                        self.garthClient.login(self.email, self.password)
+                        logger.warning(f"Garmin_Global account {self.email} logged in successfully!")
+                        time.sleep(1)
+                        del self.garthClient.sess.headers['User-Agent']
+                return func(self, *args, **kwargs)
+            except (binascii.Error, AssertionError) as e:
+                if self.auth_method == 'token':
+                    logger.warning(
+                        f"OAuth token authentication failed: {str(e)},Please check if GARMIN_CN_SECRET is correctly configured in your config file.You can regenerate the token using get_garmin_secret.py script.")
+                    raise Exception("Invalid OAuth token. Please reconfigure GARMIN_CN_SECRET.")
+                else:
+                    raise e
 
         return ware
 
@@ -157,6 +166,7 @@ class GarminGlobalClient:
     def _post_with_retry(self, url, headers, files, timeout):
         """带重试机制的POST请求"""
         return requests.post(url, headers=headers, files=files, timeout=timeout)
+
     @login
     def upload_activity(self, activity_path: str):
         """Upload activity in fit format from file."""
