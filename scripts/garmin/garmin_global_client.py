@@ -28,9 +28,18 @@ class GarminUploadException(Exception):
 
 
 class GarminGlobalClient:
-    def __init__(self, email, password):
-        self.email = email
-        self.password = password
+    def __init__(self, email_or_secret, password=None):
+        if '@' in email_or_secret and password is not None:
+            # 邮箱密码方式
+            self.auth_method = 'credentials'
+            self.email = email_or_secret
+            self.password = password
+        else:
+            # OAuth token 方式
+            self.auth_method = 'token'
+            self.secret_string = email_or_secret
+
+        # 初始化 garth 客户端
         self.garthClient = garth_module.Client()
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome//138.0.0.0 Safari/537.36",
@@ -38,20 +47,34 @@ class GarminGlobalClient:
             "Nk": "NT"
         }
 
+
     ## 登录装饰器
     def login(func):
         def ware(self, *args, **kwargs):
-            try:
-                self.garthClient.username
-            except Exception:
-                logger.warning(
-                    "Garmin_Global is not logging in or the token has expired. So start logging into Garmin_Global now!")
-                self.garthClient.configure(domain="garmin.com")  # 明确指定域
-                self.garthClient.login(self.email, self.password)
-                logger.warning(f"Garmin_Global account {self.email} logged in successfully!")
-                time.sleep(1)
-                # 可能是为了防止跟garth的登录User-Agent冲突，登录时候先删除
-                del self.garthClient.sess.headers['User-Agent']
+            if self.auth_method == 'token':
+                # OAuth token 方式
+                try:
+                    self.garthClient.username
+                except Exception:
+                    logger.warning("Garmin_Global is not logging in or the token has expired. So start loading token now!")
+                    self.garthClient.configure(domain="garmin.com")
+                    self.garthClient.loads(self.secret_string)
+                    if self.garthClient.oauth2_token.expired:
+                        self.garthClient.refresh_oauth2()
+                    logger.warning(f"Garmin_Global account {self.garthClient.username} token loaded successfully!")
+                    time.sleep(1)
+                    del self.garthClient.sess.headers['User-Agent']
+            else:
+                # 邮箱密码方式
+                try:
+                    self.garthClient.username
+                except Exception:
+                    logger.warning("Garmin_Global is not logging in. So start logging in now!")
+                    self.garthClient.configure(domain="garmin.com")
+                    self.garthClient.login(self.email, self.password)
+                    logger.warning(f"Garmin_Global account {self.email} logged in successfully!")
+                    time.sleep(1)
+                    del self.garthClient.sess.headers['User-Agent']
             return func(self, *args, **kwargs)
 
         return ware

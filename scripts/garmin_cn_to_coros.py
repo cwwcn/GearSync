@@ -33,21 +33,40 @@ def send_notification_with_retry(title, content):
 
 
 def main():
-    # 检查必需的配置参数
-    required_configs = {
+    # 检查必需的配置参数 - 首先检查高驰账户配置
+    coros_required_configs = {
         "COROS_EMAIL": "Coros email is not configured. Please set COROS_EMAIL value before running the program.",
-        "COROS_PASSWORD": "Coros password is not configured. Please set COROS_PASSWORD value before running the program.",
-        "GARMIN_CN_EMAIL": "Garmin China email is not configured. Please set GARMIN_CN_EMAIL value before running the program.",
-        "GARMIN_CN_PASSWORD": "Garmin China password is not configured. Please set GARMIN_CN_PASSWORD value before running the program."
+        "COROS_PASSWORD": "Coros password is not configured. Please set COROS_PASSWORD value before running the program."
     }
 
-    for config_key, error_message in required_configs.items():
+    for config_key, error_message in coros_required_configs.items():
         if not SYNC_CONFIG.get(config_key):
             logger.info(error_message)
             return
 
-    logger.warning("Starting to sync activity data from Garmin China to Coros...")
+    # 检查 Garmin 中国区配置 - 优先使用 token，回退到邮箱密码
+    garmin_cn_secret = SYNC_CONFIG.get("GARMIN_CN_SECRET")
+    if garmin_cn_secret:
+        # 使用 OAuth token 方式
+        logger.info("GARMIN_CN_SECRET is configured, using OAuth token method for login!")
+        garminCNClient = GarminCNClient(garmin_cn_secret)
+    else:
+        # 检查邮箱密码配置
+        garmin_required_configs = {
+            "GARMIN_CN_EMAIL": "Garmin China email is not configured. Please set GARMIN_CN_EMAIL value before running the program.",
+            "GARMIN_CN_PASSWORD": "Garmin China password is not configured. Please set GARMIN_CN_PASSWORD value before running the program."
+        }
 
+        for config_key, error_message in garmin_required_configs.items():
+            if not SYNC_CONFIG.get(config_key):
+                logger.info(error_message)
+                return
+        logger.info("GARMIN_CN_SECRET is not configured, so 'Email-Password' method will be used for login!")
+        GARMIN_CN_EMAIL = SYNC_CONFIG["GARMIN_CN_EMAIL"]
+        GARMIN_CN_PASSWORD = SYNC_CONFIG["GARMIN_CN_PASSWORD"]
+        garminCNClient = GarminCNClient(GARMIN_CN_EMAIL, GARMIN_CN_PASSWORD)
+
+    logger.warning("Starting to sync activity data from Garmin China to Coros...")
     db = getDbClient()
 
     # 获取高驰客户端
@@ -58,10 +77,6 @@ def main():
     corosClient.login()
     logger.warning(f"Coros account {corosClient.email} logged in successfully!")
 
-    # 获取佳明中国区客户端
-    GARMIN_CN_EMAIL = SYNC_CONFIG["GARMIN_CN_EMAIL"]
-    GARMIN_CN_PASSWORD = SYNC_CONFIG["GARMIN_CN_PASSWORD"]
-    garminCNClient = GarminCNClient(GARMIN_CN_EMAIL, GARMIN_CN_PASSWORD)
 
     sync_result = garminCNClient.upload_to_coros(corosClient, db, 'GARMIN_CN', 'COROS')
 

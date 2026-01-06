@@ -15,7 +15,10 @@ SYNC_CONFIG = {
     'GARMIN_CN_EMAIL': '',
     'GARMIN_CN_PASSWORD': '',
     "COROS_EMAIL": '',
-    "COROS_PASSWORD": ''
+    "COROS_PASSWORD": '',
+    "GARMIN_CN_SECRET": '',
+    "GARMIN_GLOBAL_SECRET": '',
+    "DOMAIM": '',
 }
 
 RQ_CONFIG = {
@@ -29,6 +32,7 @@ NOTIFY_CONFIG = {
     'DD_BOT_SECRET': '',
     'DD_BOT_TOKEN': ''
 }
+
 
 def load_config_from_file():
     """从配置文件加载配置"""

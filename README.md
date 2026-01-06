@@ -12,6 +12,8 @@
 - 增加了钉钉机器人推送结果功能。
 - 整合了RQrun自动签到。
 - 重构了些方法，修改了些逻辑，完善了些细节...
+- 2026-01-06：改造新增了Garmin的MFA登录方式，默认用MFA方式登录，如果未配置令牌会使用账号-密码方式登录。
+![MFA登录.png](doc/MFA%E7%99%BB%E5%BD%95.png)
 - 等等...
 
 ## 注意，特别是第1条！
@@ -33,23 +35,32 @@
 |  GARMIN_GLOBAL_PASSWORD  |                  佳明国际区登录密码                   |                                                                               |
 |       COROS_EMAIL        |                   高驰 登录邮箱                    |                                                                               |
 |      COROS_PASSWORD      |                   高驰 登录密码                    |                                                                               |
-|      DD_BOT_TOKEN      |              钉钉机器人webhook token              |                                                                               |
-|      DD_BOT_SECRET      |                 钉钉机器人secret                  |                                                                               |
-|      AESKEY      | 如果QRrun签到，这个是必填项，自定义，长度不超过32字符，最好是16、24、32字符 |                        例如随便写个aeskey：suibianxiegeaeskey                        |
-|      RQ_EMAIL      |          如果QRrun签到，这个是必填项，你RQ的登录账号           |                                                                               |
-|      RQ_PASSWORD      |          如果QRrun签到，这个是必填项，你RQ的登录密码           |                                                                               |
+|       DD_BOT_TOKEN       |              钉钉机器人webhook token              |                                                                               |
+|      DD_BOT_SECRET       |                 钉钉机器人secret                  |                                                                               |
+|          AESKEY          | 如果QRrun签到，这个是必填项，自定义，长度不超过32字符，最好是16、24、32字符 |                        例如随便写个aeskey：suibianxiegeaeskey                        |
+|         RQ_EMAIL         |          如果QRrun签到，这个是必填项，你RQ的登录账号           |                                                                               |
+|       RQ_PASSWORD        |          如果QRrun签到，这个是必填项，你RQ的登录密码           |                                                                               |
+|          DOMAIN          |               主要用于获取令牌的时候域名区分的               |                              获取国际区用COM，获取中国区用CN                               |
+|       GARMIN_CN_SECRET        |                   佳明中国区令牌                    |                                不填的话默认走账号密码方式登录                                |
+|       GARMIN_GLOBAL_SECRET        |                   佳明国际区令牌                    |                                不填的话默认走账号密码方式登录                                |
 
 例如你打算 ：从 佳明中国区 2025年7月1日以后的数据开始 同步到到佳明国际区，然后将执行结果推送到自己的钉钉机器人。那么参数配置情况如下：
 
 - SOURCE = GARMIN_CN
 - TARGET = GARMIN_GLOBAL
 - SYNC_ACTIVITY_START_TIME = 20250701
-- GARMIN_CN_EMAIL = XXXX@XXXX.com（你自己的佳明中国区登录邮箱号）
-- GARMIN_CN_PASSWORD = **********（你自己的佳明中国区登录密码）
-- GARMIN_GLOBAL_EMAIL = XXXX@XXXX.com（你自己的佳明国际区登录邮箱号）
-- GARMIN_GLOBAL_PASSWORD = **********（你自己的佳明国际区登录密码）
 - DD_BOT_TOKEN = *********（你钉钉机器人的token）
 - DD_BOT_SECRET = SEC*****（你钉钉机器人的secret）
+- 关于佳明的登录，有两种方式：1、使用令牌登录（推荐，也是默认的）；2、使用账号密码登录。默认用令牌登录，如果未配置令牌会使用账号-密码方式登录:
+- - 1、令牌方式，分别配置：
+- - - GARMIN_CN_SECRET = xxxxxxxxxxx(很长一串字符串)
+- - - GARMIN_GLOBAL_SECRET = xxxxxxxxxxx(很长一串字符串)
+- - 2、账号密码方式，分别配置：
+- - - GARMIN_CN_EMAIL = xxxx@xxxx(你的中国区登录邮箱)
+- - - GARMIN_CN_PASSWORD = xxxxxxxxxxx(你的中国区登录密码)
+- - - GARMIN_GLOBAL_EMAIL = xxxx@xxxx(你的国际区登录邮箱)
+- - - GARMIN_GLOBAL_PASSWORD = xxxxxxxxxxx(你的国际区登录密码)
+
 
 ## 运行启动说明
 
@@ -59,21 +70,27 @@
 
 一、你可以从以下程序入口启动，该种启动方式因明确了数据同步方向，故无需配置SOURCE和TARGET参数（就算你配了也没用），只需要配两方账号密码以及时间节点即可：
 
-- 从高驰同步数据到佳明中国区：coros_to_garmin_cn.py
-- 从高驰同步数据到佳明国际区：coros_to_garmin_global.py
-- 从佳明中国区同步数据到高驰：garmin_cn_to_coros.py
-- 从佳明国际区同步数据到高驰：garmin_global_to_coros.py
-- 从佳明国际区同步数据到佳明中国区：garmin_global_to_garmin_cn.py
-- 从佳明中国区同步数据到佳明国际区：garmin_cn_to_garmin_global.py
+- 从高驰同步数据到佳明中国区：[coros_to_garmin_cn.py](scripts/coros_to_garmin_cn.py)
+- 从高驰同步数据到佳明国际区：[coros_to_garmin_global.py](scripts/coros_to_garmin_global.py)
+- 从佳明中国区同步数据到高驰：[garmin_cn_to_coros.py](scripts/garmin_cn_to_coros.py)
+- 从佳明国际区同步数据到高驰：[garmin_global_to_coros.py](scripts/garmin_global_to_coros.py)
+- 从佳明国际区同步数据到佳明中国区：[garmin_global_to_garmin_cn.py](scripts/garmin_global_to_garmin_cn.py)
+- 从佳明中国区同步数据到佳明国际区：[garmin_cn_to_garmin_global.py](scripts/garmin_cn_to_garmin_global.py)
 
 二、同时你也可以直接在以下入口使用通用方式启动程序，该方式则必须指定配置SOURCE和TARGET，两方账号账号密码以及时间节点，程序会根据SOURCE和TARGET配置情况自动选择执行哪种同步方式：
 
-- gear_sync.py
+- [gear_sync.py](scripts/gear_sync.py)
 
 三、RQrun签到从这启动：
-- rq_sign.py（如果后期改RQ密码后，执行签到报错了，就把rq.db删了重新运行！）
+- [rq_sign.py](scripts/rq_sign.py)（如果后期改RQ密码后，执行签到报错了，就把rq.db删了重新运行！）
+
+四、Garmin令牌获取：
+- [get_garmin_secret.py](scripts/utils/get_garmin_secret.py) 
+- - 分别配置DOMAIN和对应区的Garmin登录邮箱与密码，执行后打印出来的那个很长很长的字符串就是令牌，复制保存。
 
 **数据同步启动方式选择建议：如果你的需求只涉及一个方向的同步，直接使用方式二的gear_sync.py启动；如果你既要又要，那就按需选方式一里边的启动方式，这时就不要再用方式二了。**
+
+**令牌拿到后就可以去掉账号密码的配置了，以后用MFA方式登录。**
 
 ## 项目运行方案
 

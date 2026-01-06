@@ -33,32 +33,55 @@ def send_notification_with_retry(title, content):
 
 
 def main():
-    # 检查必需的配置参数
-    required_configs = {
-        "GARMIN_CN_EMAIL": "Garmin China email is not configured. Please set GARMIN_CN_EMAIL value before running the program.",
-        "GARMIN_CN_PASSWORD": "Garmin China password is not configured. Please set GARMIN_CN_PASSWORD value before running the program.",
-        "GARMIN_GLOBAL_EMAIL": "Garmin Global email is not configured. Please set GARMIN_GLOBAL_EMAIL value before running the program.",
-        "GARMIN_GLOBAL_PASSWORD": "Garmin Global password is not configured. Please set GARMIN_GLOBAL_PASSWORD value before running the program."
-    }
+    # 检查佳明中国区配置 - 优先使用 token，回退到邮箱密码
+    garmin_cn_secret = SYNC_CONFIG.get("GARMIN_CN_SECRET")
+    if garmin_cn_secret:
+        # 使用 OAuth token 方式
+        logger.info("GARMIN_CN_SECRET is configured, using OAuth token method for login!")
+        garminCNClient = GarminCNClient(garmin_cn_secret)
+    else:
+        # 检查邮箱密码配置
+        garmin_cn_required_configs = {
+            "GARMIN_CN_EMAIL": "Garmin China email is not configured. Please set GARMIN_CN_EMAIL value before running the program.",
+            "GARMIN_CN_PASSWORD": "Garmin China password is not configured. Please set GARMIN_CN_PASSWORD value before running the program."
+        }
 
-    for config_key, error_message in required_configs.items():
-        if not SYNC_CONFIG.get(config_key):
-            logger.info(error_message)
-            return
+        for config_key, error_message in garmin_cn_required_configs.items():
+            if not SYNC_CONFIG.get(config_key):
+                logger.info(error_message)
+                return
+
+        logger.info("GARMIN_CN_SECRET is not configured, so 'Email-Password' method will be used for login!")
+        GARMIN_CN_EMAIL = SYNC_CONFIG["GARMIN_CN_EMAIL"]
+        GARMIN_CN_PASSWORD = SYNC_CONFIG["GARMIN_CN_PASSWORD"]
+        garminCNClient = GarminCNClient(GARMIN_CN_EMAIL, GARMIN_CN_PASSWORD)
+
+    # 检查佳明国际区配置 - 优先使用 token，回退到邮箱密码
+    garmin_global_secret = SYNC_CONFIG.get("GARMIN_GLOBAL_SECRET")
+    if garmin_global_secret:
+        # 使用 OAuth token 方式
+        logger.info("GARMIN_GLOBAL_SECRET is configured, using OAuth token method for login!")
+        garminGlobalClient = GarminGlobalClient(garmin_global_secret)
+    else:
+        # 检查邮箱密码配置
+        garmin_global_required_configs = {
+            "GARMIN_GLOBAL_EMAIL": "Garmin Global email is not configured. Please set GARMIN_GLOBAL_EMAIL value before running the program.",
+            "GARMIN_GLOBAL_PASSWORD": "Garmin Global password is not configured. Please set GARMIN_GLOBAL_PASSWORD value before running the program."
+        }
+
+        for config_key, error_message in garmin_global_required_configs.items():
+            if not SYNC_CONFIG.get(config_key):
+                logger.info(error_message)
+                return
+
+        logger.info("GARMIN_GLOBAL_SECRET is not configured, so 'Email-Password' method will be used for login!")
+        GARMIN_GLOBAL_EMAIL = SYNC_CONFIG["GARMIN_GLOBAL_EMAIL"]
+        GARMIN_GLOBAL_PASSWORD = SYNC_CONFIG["GARMIN_GLOBAL_PASSWORD"]
+        garminGlobalClient = GarminGlobalClient(GARMIN_GLOBAL_EMAIL, GARMIN_GLOBAL_PASSWORD)
 
     logger.warning("Starting to sync activity data from Garmin China to Garmin Global...")
 
     db = getDbClient()
-
-    # 获取佳明中国区客户端
-    GARMIN_CN_EMAIL = SYNC_CONFIG["GARMIN_CN_EMAIL"]
-    GARMIN_CN_PASSWORD = SYNC_CONFIG["GARMIN_CN_PASSWORD"]
-    garminCNClient = GarminCNClient(GARMIN_CN_EMAIL, GARMIN_CN_PASSWORD)
-
-    # 获取佳明国际区客户端
-    GARMIN_GLOBAL_EMAIL = SYNC_CONFIG["GARMIN_GLOBAL_EMAIL"]
-    GARMIN_GLOBAL_PASSWORD = SYNC_CONFIG["GARMIN_GLOBAL_PASSWORD"]
-    garminGlobalClient = GarminGlobalClient(GARMIN_GLOBAL_EMAIL, GARMIN_GLOBAL_PASSWORD)
 
     sync_result = garminCNClient.uploadToGarminGlobal(garminGlobalClient, db, 'GARMIN_CN', 'GARMIN_GLOBAL')
     # 返回同步统计信息
