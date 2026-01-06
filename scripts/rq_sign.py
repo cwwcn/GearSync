@@ -30,7 +30,7 @@ ocr = ddddocr.DdddOcr(beta=True, show_ad=False)
 TIME_OUT = httpx.Timeout(1000.0, connect=1000.0)
 
 
-class RqSgin:
+class RqSign:
     def __init__(self, userId, token):
         self.req = httpx.AsyncClient(timeout=TIME_OUT)
         ## 签到请求头
@@ -153,7 +153,7 @@ async def rq_sigin(email, password, AES_KEY, rqdbpath):
                 ## 判断存储的token是否过期
                 isExpired = await rq_connect.isExpiredToken(aesChiper, encrypt_user_id, encrypt_access_token)
                 if not isExpired:
-                    rqs = RqSgin(
+                    rqs = RqSign(
                         aesChiper.decrypt(encrypt_user_id),
                         aesChiper.decrypt(encrypt_access_token)
                     )
@@ -181,7 +181,7 @@ async def rq_sigin(email, password, AES_KEY, rqdbpath):
             encrypt_user_id = query_set[0][2]
             ## 加密access_token
             encrypt_access_token = query_set[0][3]
-            rqs = RqSgin(
+            rqs = RqSign(
                 aesChiper.decrypt(encrypt_user_id),
                 aesChiper.decrypt(encrypt_access_token)
             )
