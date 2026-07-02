@@ -18,7 +18,7 @@ SYNC_CONFIG = {
     "COROS_PASSWORD": '',
     "GARMIN_CN_SECRET": '',
     "GARMIN_GLOBAL_SECRET": '',
-    "DOMAIM": '',
+    "DOMAIN": '',
 }
 
 RQ_CONFIG = {

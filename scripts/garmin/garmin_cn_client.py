@@ -273,7 +273,7 @@ class GarminCNClient:
                 upload_result = corosClient.uploadActivity(
                     f"fit_zip/{corosClient.userId}/{calculate_md5_file(file_path)}.zip", calculate_md5_file(file_path),
                     f"{un_sync_id}.zip", size)
-                if upload_result == '0000':
+                if upload_result:
                     self.update_db_status(db, un_sync_id, source, target)
                     logger.warning(f"sync garmin activity: {un_sync_id} to coros success.")
                     # 现在是zip上传完后就删除掉zip包

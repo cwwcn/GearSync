@@ -90,10 +90,12 @@ class CorosClient:
                 headers=headers
             )
             upload_response = json.loads(response.data)
-            upload_result = upload_response["result"]
-            return upload_result
+            if upload_response["data"].get("status") == 2 and upload_response["result"] == "0000":
+                return True
+            else:
+                return False
         except Exception as err:
-            logger.warning()
+            logger.warning(err)
             exit()
 
     ## 登录装饰器

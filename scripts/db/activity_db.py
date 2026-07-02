@@ -1,6 +1,4 @@
-import os
 from db.sqlite_db import SqliteDB
-from conf.config import DB_DIR
 
 
 class ActivityDB:
@@ -48,7 +46,7 @@ class ActivityDB:
             db.execute(update_sql, (id, source, target))
 
     def initDB(self):
-        with SqliteDB(os.path.join(DB_DIR, self._db_name)) as db:
+        with SqliteDB(self._db_name) as db:
             # 创建表
             db.execute('''
                       CREATE TABLE activity_table(
@@ -62,14 +60,18 @@ class ActivityDB:
                       ) 
                     ''')
 
-            # 创建更新触发器，同时更新 create_time 和 update_time 字段
+        self.ensureUpdateTrigger()
+
+    def ensureUpdateTrigger(self):
+        with SqliteDB(self._db_name) as db:
+            db.execute('DROP TRIGGER IF EXISTS update_activity_table_time')
+            # 只刷新 update_time，避免状态更新时覆盖原始 create_time。
             db.execute('''
-                      CREATE TRIGGER IF NOT EXISTS update_activity_table_time 
-                      AFTER UPDATE ON activity_table 
-                      FOR EACH ROW 
-                      BEGIN 
-                        UPDATE activity_table SET create_time = datetime('now', '+8 hours'), 
-                                                 update_time = datetime('now', '+8 hours') 
+                      CREATE TRIGGER update_activity_table_time
+                      AFTER UPDATE ON activity_table
+                      FOR EACH ROW
+                      BEGIN
+                        UPDATE activity_table SET update_time = datetime('now', '+8 hours')
                         WHERE id = OLD.id;
                       END;
                     ''')

@@ -158,9 +158,9 @@ async def rq_sigin(email, password, AES_KEY, rqdbpath):
                         aesChiper.decrypt(encrypt_access_token)
                     )
                     ## 登录一次更新一次时间保证action不掉线
-                await rqs.sigin()
-                rq_user_db.update_user_login_time(encrypt_email)
-                return
+                    await rqs.sigin()
+                    rq_user_db.update_user_login_time(encrypt_email)
+                    return
         ## 如果数据库中存储的账号条数大于一条默认全部删除登录后再插入一条保持数据的唯一
         elif query_size > 1:
             for row in query_set:

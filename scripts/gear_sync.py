@@ -15,8 +15,11 @@ sys.path.append(coros_path)
 
 
 def init(activity_db):
-    if not os.path.exists(os.path.join(DB_DIR, activity_db.db_name)):
+    db_exists = os.path.exists(os.path.join(DB_DIR, activity_db.db_name))
+    if not db_exists:
         activity_db.initDB()
+    else:
+        activity_db.ensureUpdateTrigger()
     if not os.path.exists(GARMIN_GLOBAL_FIT_DIR):
         os.mkdir(GARMIN_GLOBAL_FIT_DIR)
     if not os.path.exists(GARMIN_CN_FIT_DIR):

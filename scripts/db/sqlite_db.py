@@ -18,7 +18,8 @@ class SqliteDB(object):
 
     def __enter__(self):
         try:
-            self.connection = sqlite3.connect(database=os.path.join(DB_DIR,self.database), isolation_level=self.isolation_level)
+            database_path = self.database if os.path.isabs(self.database) else os.path.join(DB_DIR, self.database)
+            self.connection = sqlite3.connect(database=database_path, isolation_level=self.isolation_level)
             self.cursor = self.connection.cursor()
             return self.cursor
         except Exception as ex:
