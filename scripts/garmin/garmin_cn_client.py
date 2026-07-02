@@ -266,24 +266,20 @@ class GarminCNClient:
                     client = AwsOssClient()
                 file_path = un_sync_info["file_path"]
                 un_sync_id = un_sync_info["un_sync_id"]
+                file_md5 = calculate_md5_file(file_path)
+                oss_file_name = f"{corosClient.userId}/{file_md5}.zip"
                 # 上传oss
-                client.multipart_upload(file_path, f"{corosClient.userId}/{calculate_md5_file(file_path)}.zip")
+                client.multipart_upload(file_path, oss_file_name)
                 size = os.path.getsize(file_path)
                 # 使用oss上传
                 upload_result = corosClient.uploadActivity(
-                    f"fit_zip/{corosClient.userId}/{calculate_md5_file(file_path)}.zip", calculate_md5_file(file_path),
+                    f"fit_zip/{oss_file_name}", file_md5,
                     f"{un_sync_id}.zip", size)
                 if upload_result:
                     self.update_db_status(db, un_sync_id, source, target)
                     logger.warning(f"sync garmin activity: {un_sync_id} to coros success.")
-                    # 现在是zip上传完后就删除掉zip包
-                    # 解压zip包
-                    file = self.downloadFitActivity(un_sync_id)
-                    zip_file_path = os.path.join(GARMIN_CN_FIT_DIR, f"{un_sync_id}.zip")
-                    with open(zip_file_path, "wb") as fb:
-                        fb.write(file)
                     # 解压zip文件，确定一个zip里边只有一个文件，所以只处理一个文件
-                    with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+                    with zipfile.ZipFile(file_path, 'r') as zip_ref:
                         file_list = zip_ref.namelist()
                         if file_list:  # 确保列表不为空
                             # 只解压第一个文件，因为我知道一个zip包里只有一个文件，绝对不可能多
@@ -291,7 +287,7 @@ class GarminCNClient:
                             zip_ref.extract(filename, GARMIN_CN_FIT_DIR)
                             os.path.join(GARMIN_CN_FIT_DIR, filename)
                     # 删除zip包
-                    os.remove(zip_file_path)
+                    os.remove(file_path)
                     success_count += 1  # 增加成功计数
                 else:
                     logger.warning(f"Upload garmin_cn {un_sync_id} to coros error inside, status {upload_result}")
