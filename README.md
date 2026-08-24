@@ -1,154 +1,223 @@
-# GearSync：佳明国际区、佳明中国区、高驰运动数据同步与迁移工具
+# GearSync：Garmin 与 COROS 运动数据同步工具
 
-## 致谢
+GearSync 用于在 Garmin 中国区、Garmin 国际区和 COROS（高驰）之间同步或迁移运动数据，并提供同步结果通知和 RQrun 自动签到功能。
 
-- 该脚本是根据XiaoSiHwang/garmin-sync-coros项目为重要参考的重写与新增升级，非常感谢大佬的无私奉献！！！！！！
+## 功能
 
-## 功能概览
-
-- 增加了佳明国际区和佳明中国区之间任意方向的数据同步。
-- 增加了同步数据时间节点的可选择。
-- 修复了高驰往佳明同步失败的问题。
-- 增加了钉钉机器人推送结果功能。
-- 整合了RQrun自动签到。
-- 重构了些方法，修改了些逻辑，完善了些细节...
-- 2026-01-06：改造新增了Garmin的MFA登录方式，默认用MFA方式登录，如果未配置令牌会使用账号-密码方式登录。
-![MFA登录.png](doc/MFA%E7%99%BB%E5%BD%95.png)
-- 等等...
+- 支持 Garmin 中国区、Garmin 国际区、COROS 任意两个平台之间的双向同步，共 6 种方向。
+- 支持指定同步起始日期或时间；不指定时同步全部历史数据。
+- Garmin 支持令牌和账号密码两种登录方式，配置令牌时优先使用令牌。
+- 使用本地 SQLite 记录各同步方向的处理状态，避免重复处理已成功同步的活动。
+- 支持通过钉钉机器人发送同步结果。
+- 提供独立的 RQrun 自动签到脚本。
 
 ## 使用前注意
 
-**1：如果你的数据同步任务涉及到佳明国际区，请一定要确保运行脚本的网络环境能够顺利访问国外网站，否则会导致数据同步失败。**
+1. 同步涉及 Garmin 国际区时，运行环境必须能够正常访问 Garmin 国际区服务。
+2. COROS 仅允许单设备登录。同步期间不要同时登录或打开 COROS 网页端，否则可能导致登录状态失效或同步失败。
+3. `SYNC_ACTIVITY_START_TIME` 留空会读取全部历史活动。首次运行前请确认同步方向和时间范围。
 
-2：由于高驰平台只允许单设备登录，同步期间如果打开高驰网页，可能会导致同步失败。
+## 快速开始
 
-## 参数配置说明
+### 1. 安装依赖
 
-|           参数名            |                      备注                      |                                      案例                                       |
-|:------------------------:|:--------------------------------------------:|:-----------------------------------------------------------------------------:|
-|          SOURCE          |                 数据源(数据从哪里来)                  |                       分为：GARMIN_CN、GARMIN_GLOBAL、COROS                        |
-|          TARGET          |                 数据目标（数据到哪里去）                 |                       分为：GARMIN_CN、GARMIN_GLOBAL、COROS                        |
-| SYNC_ACTIVITY_START_TIME |                  同步的数据时间节点                   | 格式：%Y%m%d%H%M%S <br/>例如：20250701083001或20250701<br/>（可指定日期与时间或只写日期，默认0点0分1秒 ） |
-|     GARMIN_CN_EMAIL      |                 佳明中国区登录帐号邮箱                  |                                                                               |
-|    GARMIN_CN_PASSWORD    |                  佳明中国区登录密码                   |                                                                               |
-|   GARMIN_GLOBAL_EMAIL    |                 佳明国际区登录帐号邮箱                  |                                                                               |
-|  GARMIN_GLOBAL_PASSWORD  |                  佳明国际区登录密码                   |                                                                               |
-|       COROS_EMAIL        |                   高驰 登录邮箱                    |                                                                               |
-|      COROS_PASSWORD      |                   高驰 登录密码                    |                                                                               |
-|       DD_BOT_TOKEN       |              钉钉机器人webhook token              |                                                                               |
-|      DD_BOT_SECRET       |                 钉钉机器人secret                  |                                                                               |
-|          AESKEY          | 如果RQrun签到，这个是必填项，自定义，长度不超过32字符，最好是16、24、32字符 |                        例如随便写个aeskey：suibianxiegeaeskey                        |
-|         RQ_EMAIL         |          如果RQrun签到，这个是必填项，你RQ的登录账号           |                                                                               |
-|       RQ_PASSWORD        |          如果RQrun签到，这个是必填项，你RQ的登录密码           |                                                                               |
-|          DOMAIN          |               主要用于获取令牌的时候域名区分的               |                              获取国际区用COM，获取中国区用CN                               |
-|    GARMIN_CN_SECRET     |                   佳明中国区令牌                    |                                不填的话默认走账号密码方式登录                                |
-|  GARMIN_GLOBAL_SECRET   |                   佳明国际区令牌                    |                                不填的话默认走账号密码方式登录                                |
+```bash
+python3 -m pip install -r requirements.txt
+```
 
-例如你打算：从佳明中国区同步2025年7月1日以后的数据到佳明国际区，并将执行结果推送到自己的钉钉机器人。那么参数配置如下：
+### 2. 创建本地配置
+
+```bash
+cp scripts/config.example.ini scripts/config.ini
+```
+
+`scripts/config.ini` 只用于本地运行和 IDE 调试，已被 Git 忽略。请勿将账号、密码或令牌写入 `config.example.ini`。
+
+### 3. 配置同步方向和账号
+
+例如，从 Garmin 中国区同步 2025 年 7 月 1 日之后的活动到 Garmin 国际区：
 
 ```ini
+[SYNC_SETTINGS]
 SOURCE = GARMIN_CN
 TARGET = GARMIN_GLOBAL
 SYNC_ACTIVITY_START_TIME = 20250701
-DD_BOT_TOKEN = *********（你钉钉机器人的token）
-DD_BOT_SECRET = SEC*****（你钉钉机器人的secret）
 ```
 
-Garmin登录有两种方式：
+同时在 `[GARMIN_CN]` 和 `[GARMIN_GLOBAL]` 中配置对应的令牌，或配置账号和密码。
 
-1. 令牌方式（推荐）：配置 `GARMIN_CN_SECRET` 和 `GARMIN_GLOBAL_SECRET`。
-2. 账号密码方式：不配置令牌时，程序会使用 `GARMIN_CN_EMAIL` / `GARMIN_CN_PASSWORD` 和 `GARMIN_GLOBAL_EMAIL` / `GARMIN_GLOBAL_PASSWORD` 登录。
+### 4. 启动同步
 
+```bash
+python3 scripts/gear_sync.py
+```
 
-## 运行启动说明
+## 配置说明
 
-### 脚本支持佳明中国区、佳明国际区和高驰三个平台相互之间总共6种同步方式，以及RQrun签到。
+配置读取优先级为：
 
-**同步数据每种方式如不指定时间节点即为全部数据迁移！！**
+```text
+命令行参数 > 系统或青龙环境变量 > scripts/config.ini > 默认空值
+```
 
-一、方向明确的入口脚本：这些脚本已经写死同步方向，无需配置 `SOURCE` 和 `TARGET`，只需要配置对应平台的登录信息和时间节点即可。
+### 同步配置
 
-- 从高驰同步数据到佳明中国区：[coros_to_garmin_cn.py](scripts/coros_to_garmin_cn.py)
-- 从高驰同步数据到佳明国际区：[coros_to_garmin_global.py](scripts/coros_to_garmin_global.py)
-- 从佳明中国区同步数据到高驰：[garmin_cn_to_coros.py](scripts/garmin_cn_to_coros.py)
-- 从佳明国际区同步数据到高驰：[garmin_global_to_coros.py](scripts/garmin_global_to_coros.py)
-- 从佳明国际区同步数据到佳明中国区：[garmin_global_to_garmin_cn.py](scripts/garmin_global_to_garmin_cn.py)
-- 从佳明中国区同步数据到佳明国际区：[garmin_cn_to_garmin_global.py](scripts/garmin_cn_to_garmin_global.py)
+| 参数 | 说明 | 示例 |
+| --- | --- | --- |
+| `SOURCE` | 数据来源平台 | `GARMIN_CN`、`GARMIN_GLOBAL`、`COROS` |
+| `TARGET` | 数据目标平台，不能与来源相同 | `GARMIN_CN`、`GARMIN_GLOBAL`、`COROS` |
+| `SYNC_ACTIVITY_START_TIME` | 同步起始时间；留空表示全部历史数据 | `20250701` 或 `20250701083001` |
+| `DOMAIN` | 获取 Garmin 令牌时选择区域 | 中国区使用 `CN`，国际区使用 `COM` |
 
-二、通用入口脚本：该方式必须配置 `SOURCE` 和 `TARGET`，程序会根据这两个参数自动选择同步方向。
+只填写日期时，程序按当天 `00:00:01` 作为起始时间；完整格式为 `YYYYMMDDHHMMSS`。
 
-- [gear_sync.py](scripts/gear_sync.py)
+### 平台登录配置
 
-三、RQrun签到入口：
-- [rq_sign.py](scripts/rq_sign.py)（如果后期改RQ密码后，执行签到报错了，就把rq.db删了重新运行！）
+| 参数 | 说明 |
+| --- | --- |
+| `GARMIN_CN_SECRET` | Garmin 中国区登录令牌；配置后优先使用 |
+| `GARMIN_CN_EMAIL` | Garmin 中国区账号；未配置令牌时必填 |
+| `GARMIN_CN_PASSWORD` | Garmin 中国区密码；未配置令牌时必填 |
+| `GARMIN_GLOBAL_SECRET` | Garmin 国际区登录令牌；配置后优先使用 |
+| `GARMIN_GLOBAL_EMAIL` | Garmin 国际区账号；未配置令牌时必填 |
+| `GARMIN_GLOBAL_PASSWORD` | Garmin 国际区密码；未配置令牌时必填 |
+| `COROS_EMAIL` | COROS 登录账号 |
+| `COROS_PASSWORD` | COROS 登录密码 |
 
-四、Garmin令牌获取：
-- [get_garmin_secret.py](scripts/utils/get_garmin_secret.py) 
-  - 分别配置 `DOMAIN` 和对应区的Garmin登录邮箱与密码，执行后打印出来的长字符串就是令牌，复制保存。
+Garmin 登录顺序：
 
-**启动方式建议：大多数情况下直接使用通用入口 `gear_sync.py`，通过 `SOURCE` 和 `TARGET` 指定同步方向即可。如果你想在青龙里分别维护多个固定方向的任务，再选择上面的方向明确脚本。**
+1. 配置了对应区域的 `GARMIN_*_SECRET` 时，使用令牌登录。
+2. 未配置令牌时，使用对应区域的邮箱和密码登录。
 
-**令牌拿到后就可以去掉账号密码的配置了，以后用MFA方式登录。**
+![Garmin MFA 登录](doc/MFA%E7%99%BB%E5%BD%95.png)
 
-## 项目运行方案
+### 通知与 RQrun 配置
 
-### 参数配置读取顺序：先读取配置文件，再由青龙/系统环境变量覆盖，最后由已传入的命令行参数覆盖。青龙部署建议优先使用环境变量。
+| 参数 | 说明 |
+| --- | --- |
+| `DD_BOT_TOKEN` | 钉钉机器人 Webhook Token；不使用通知时留空 |
+| `DD_BOT_SECRET` | 钉钉机器人签名密钥；不使用通知时留空 |
+| `AESKEY` | RQrun 本地数据加密密钥，最长 32 字符，建议使用 16、24 或 32 字符 |
+| `RQ_EMAIL` | RQrun 登录账号 |
+| `RQ_PASSWORD` | RQrun 登录密码 |
 
-### 一、本地Python环境运行
+### 命令行示例
 
-运行前请确保Python环境已安装相关依赖包（[requirements.txt](requirements.txt)）。可以通过命令行参数传入配置：
+通用入口支持通过命令行覆盖常用配置：
 
 ```bash
 python3 scripts/gear_sync.py \
   --SOURCE GARMIN_CN \
   --TARGET GARMIN_GLOBAL \
   --SYNC_ACTIVITY_START_TIME 20250701 \
-  --GARMIN_CN_EMAIL XXXX@XXXX.com \
-  --GARMIN_CN_PASSWORD *** \
-  --GARMIN_GLOBAL_EMAIL XXXX@XXXX.com \
-  --GARMIN_GLOBAL_PASSWORD ****
+  --GARMIN_CN_EMAIL user@example.com \
+  --GARMIN_CN_PASSWORD '******' \
+  --GARMIN_GLOBAL_EMAIL user@example.com \
+  --GARMIN_GLOBAL_PASSWORD '******'
 ```
 
-### 二、Docker方式运行
+生产环境建议使用环境变量传递敏感配置，避免密码出现在命令历史或任务日志中。
 
-如果你懂一点代码，也可以通过修改配置文件[config.ini](scripts/config.ini)<span style="color:#E4393C;font-weight:bold;">(看好是ini文件，别改错了)</span>来配置参数后，将程序打包成Docker镜像，搭配系统定时任务运行。
-- 参数配置示例：![参数配置文件.png](doc/%E5%8F%82%E6%95%B0%E9%85%8D%E7%BD%AE%E6%96%87%E4%BB%B6.png)
+## 程序入口
 
-### 三、青龙面板运行
+### 通用同步入口
 
-如果有条件，最推荐使用青龙面板运行，直观、方便、易管理。强烈建议使用debian版本的青龙镜像：`whyour/qinglong:debian`。普通版本可能会出现 `pydantic-core` 等二进制依赖安装异常；如果你需要RQ签到，也建议使用debian版本，有些依赖包普通版本安装不上。
+[gear_sync.py](scripts/gear_sync.py) 根据 `SOURCE` 和 `TARGET` 自动选择同步方向，适合大多数使用场景。
 
-1. 使用青龙跑定时任务之前，须装依赖包（[requirements.txt](requirements.txt)）！！
-![青龙安装依赖.png](doc/%E9%9D%92%E9%BE%99%E5%AE%89%E8%A3%85%E4%BE%9D%E8%B5%96.png)
----
-2. 请确保每一个依赖的安装状态都是已安装状态。
-![青龙依赖.png](doc/%E9%9D%92%E9%BE%99%E4%BE%9D%E8%B5%96.png)
----
-3. 根据自己的需求，在青龙中配置环境变量。
-![青龙配置环境变量.png](doc/%E9%9D%92%E9%BE%99%E9%85%8D%E7%BD%AE%E7%8E%AF%E5%A2%83%E5%8F%98%E9%87%8F.png)
----
-4. 订阅管理里拉代码，设置定时任务。\
-这里的链接不一定是我的仓库链接，如果你fork到了自己的仓库下，请将链接替换成自己的仓库链接。\
-编辑订阅页面最下边还有 “自动添加任务”，“自动删除任务”，这俩开关首次拉代码建议打开。开启后它会把项目里所有的py文件都自动帮你添加任务到定时服务里，首次拉完代码后就关掉。
-![订阅管理.png](doc/%E8%AE%A2%E9%98%85%E7%AE%A1%E7%90%86.png)
-到定时任务里根据需求删除掉用不上的定时任务。
-![定时任务.png](doc/%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1.png)
-回到订阅管理再把这两个按钮关掉保存，以防下次同步代码后被删除的定时任务再次被添加。
-![关掉自动添加和删除.png](doc/%E5%85%B3%E6%8E%89%E8%87%AA%E5%8A%A8%E6%B7%BB%E5%8A%A0%E5%92%8C%E5%88%A0%E9%99%A4.png)
-（至此全部配置就完成了）
----
-5. 运行程序效果：
-![运行效果图.png](doc/%E8%BF%90%E8%A1%8C%E6%95%88%E6%9E%9C%E5%9B%BE.png)
+### 固定方向入口
 
-## 将来可能会做的
-- [x] 增加钉钉消息提醒。
-- [x] 增加RQrun自动签到。
-- [ ] 持续完善细节，尽量做到不出bug。
-- [ ] 根据运动类型筛选同步数据，例如只同步跑步数据、只同步骑行数据等。
-- [ ] GitHub Actions 运行方式。
+固定方向脚本不读取 `SOURCE` 和 `TARGET`，适合在青龙中为不同同步方向分别创建任务。
+
+| 同步方向 | 入口 |
+| --- | --- |
+| COROS → Garmin 中国区 | [coros_to_garmin_cn.py](scripts/coros_to_garmin_cn.py) |
+| COROS → Garmin 国际区 | [coros_to_garmin_global.py](scripts/coros_to_garmin_global.py) |
+| Garmin 中国区 → COROS | [garmin_cn_to_coros.py](scripts/garmin_cn_to_coros.py) |
+| Garmin 国际区 → COROS | [garmin_global_to_coros.py](scripts/garmin_global_to_coros.py) |
+| Garmin 中国区 → Garmin 国际区 | [garmin_cn_to_garmin_global.py](scripts/garmin_cn_to_garmin_global.py) |
+| Garmin 国际区 → Garmin 中国区 | [garmin_global_to_garmin_cn.py](scripts/garmin_global_to_garmin_cn.py) |
+
+### 获取 Garmin 登录令牌
+
+在 `scripts/config.ini` 中配置 `DOMAIN` 和对应区域的 Garmin 邮箱、密码，然后运行：
+
+```bash
+PYTHONPATH=scripts python3 scripts/utils/get_garmin_secret.py
+```
+
+脚本输出的长字符串即为登录令牌。请将其保存到对应的 `GARMIN_CN_SECRET` 或 `GARMIN_GLOBAL_SECRET`，并妥善保管。
+
+### RQrun 自动签到
+
+配置 `AESKEY`、`RQ_EMAIL` 和 `RQ_PASSWORD` 后运行：
+
+```bash
+python3 scripts/rq_sign.py
+```
+
+如果修改 RQrun 密码后本地令牌状态异常，请先备份或重命名 `db/rq.db`，再让程序重新创建数据库。
+
+## 青龙面板部署
+
+建议使用 Debian 版本镜像 `whyour/qinglong:debian`。普通镜像可能无法正确安装部分二进制依赖，RQrun 验证码识别相关依赖尤其容易受影响。
+
+1. 在青龙中安装 [requirements.txt](requirements.txt) 中的 Python 依赖。
+
+   ![安装依赖](doc/%E9%9D%92%E9%BE%99%E5%AE%89%E8%A3%85%E4%BE%9D%E8%B5%96.png)
+
+2. 确认依赖均已成功安装。
+
+   ![依赖状态](doc/%E9%9D%92%E9%BE%99%E4%BE%9D%E8%B5%96.png)
+
+3. 使用青龙环境变量配置同步参数和登录信息。
+
+   ![配置环境变量](doc/%E9%9D%92%E9%BE%99%E9%85%8D%E7%BD%AE%E7%8E%AF%E5%A2%83%E5%8F%98%E9%87%8F.png)
+
+4. 在订阅管理中拉取仓库并创建定时任务。首次拉取可临时打开“自动添加任务”和“自动删除任务”，完成后关闭，避免后续更新重新添加已经移除的任务。
+
+   ![订阅管理](doc/%E8%AE%A2%E9%98%85%E7%AE%A1%E7%90%86.png)
+
+   ![定时任务](doc/%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1.png)
+
+   ![关闭自动添加和删除](doc/%E5%85%B3%E6%8E%89%E8%87%AA%E5%8A%A8%E6%B7%BB%E5%8A%A0%E5%92%8C%E5%88%A0%E9%99%A4.png)
+
+5. 运行任务并检查日志和通知结果。
+
+   ![运行效果](doc/%E8%BF%90%E8%A1%8C%E6%95%88%E6%9E%9C%E5%9B%BE.png)
+
+## 本地数据
+
+运行过程中会在以下目录保存数据：
+
+- `db/`：活动同步状态和 RQrun 登录状态。
+- `coros-fit/`：从 COROS 下载的活动文件。
+- `garmin-cn-fit/`：从 Garmin 中国区下载或解压的活动文件。
+- `garmin-global-fit/`：从 Garmin 国际区下载或解压的活动文件。
+
+这些目录均为本地运行数据，不应提交到 Git。升级、清理或迁移前建议先备份。
+
+## 离线回归测试
+
+项目使用 Python 标准库 `unittest`，不需要额外安装测试框架：
+
+```bash
+python3 tests/run_tests.py
+```
+
+测试使用临时数据库、临时 FIT 目录和假客户端，并在测试运行器中禁止网络连接，因此不会登录真实账号、请求第三方接口或上传运动数据。
+
+## 后续计划
+
+- 按运动类型筛选同步数据，例如只同步跑步或骑行活动。
+- 增加 GitHub Actions 运行方式。
+- 持续补充回归测试并完善异常诊断。
+
+## 致谢
+
+本项目参考并重写自 XiaoSiHwang/garmin-sync-coros，感谢原作者的开源贡献。
 
 ## 免责声明
-- 该工具仅限用于个人学习和研究使用，不得用于任何商业或者非法用途。如有任何问题可Email：cwwcnpds@gmail.com 与我联系！
 
-## 最后真的再次感谢XiaoSiHwang大佬的开源项目，没有他就没有这个项目！！！！
+本工具仅限个人学习和研究使用，不得用于商业或非法用途。使用者应自行承担第三方平台账号和数据操作风险。
 
+如有问题，可联系：cwwcnpds@gmail.com

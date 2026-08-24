@@ -284,7 +284,6 @@ class CorosClient:
         # 计算失败条数
         failed_count = total_sync_count - success_count
         # 返回同步统计信息
-        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         if failed_count > 0:
             notifyInfo = f"同步任务执行完成，本次共同步{total_sync_count}条数据，成功同步{success_count}条，{failed_count}条数据同步失败。"
         else:

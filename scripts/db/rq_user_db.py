@@ -1,4 +1,3 @@
-import os
 from db.sqlite_db import SqliteDB
 
 

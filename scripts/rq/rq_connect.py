@@ -6,7 +6,6 @@ CURRENT_DIR = os.path.split(os.path.abspath(__file__))[0]  # 当前目录
 config_path = CURRENT_DIR.rsplit('/', 1)[0]  # 上三级目录
 sys.path.append(config_path)
 
-from db.sqlite_db import SqliteDB
 from db.rq_user_db import RQUserDB
 
 TIME_OUT = httpx.Timeout(1000.0, connect=1000.0)
