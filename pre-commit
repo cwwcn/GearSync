@@ -1,84 +1,26 @@
 #!/bin/bash
 
-# pre-commit钩子 - 防止IDE临时调试时敏感信息提交到 config.ini
-# 专门针对你的配置文件格式进行检查
+# 阻止将带有实际值的 config.ini 提交到仓库。
+# scripts/config.ini 应为未跟踪的本地配置；本 Hook 是额外保护层。
 
-# ==================== 配置区域 ====================
-# 设置检查模式:
-# 1 = 严格模式（默认）- 检测到敏感信息时阻止整个提交
-# 0 = 自动模式 - 检测到敏感信息时自动提交非敏感文件
-STRICT_MODE=0
-# =================================================
+set -u
+has_sensitive_config=false
 
-# 获取暂存区中即将提交的文件
-STAGED_FILES=$(git diff --cached --name-only)
+while IFS= read -r file; do
+    case "$file" in
+        *config.ini)
+            staged_content=$(git show ":$file" 2>/dev/null || true)
+            if printf '%s\n' "$staged_content" | grep -Eq '^[[:space:]]*[[:alnum:]_]+[[:space:]]*=[[:space:]]*[^[:space:]#]'; then
+                echo "错误：暂存的 $file 包含配置值，已阻止提交。"
+                echo "请将真实配置保留在未跟踪的 scripts/config.ini 中，并只提交 config.example.ini。"
+                has_sensitive_config=true
+            fi
+            ;;
+    esac
+done < <(git diff --cached --name-only)
 
-# 检查是否修改了 config.ini 文件
-CONFIG_INI_CHANGED=false
-CONFIG_INI_FILES=()
-
-for file in $STAGED_FILES; do
-    if [[ "$file" == *"config.ini"* ]]; then
-        CONFIG_INI_CHANGED=true
-        CONFIG_INI_FILES+=("$file")
-    fi
-done
-
-# 如果没有修改 config.ini，则跳过检查
-if [ "$CONFIG_INI_CHANGED" = false ]; then
-    exit 0
+if [ "$has_sensitive_config" = true ]; then
+    exit 1
 fi
 
-echo "检测到 config.ini 文件变更，开始检查敏感信息..."
-HAS_SENSITIVE_INFO=false
-
-# 检查暂存区中的 config.ini 是否包含敏感信息
-for file in "${CONFIG_INI_FILES[@]}"; do
-    echo "检查文件: $file"
-
-    # 获取暂存区中的文件内容
-    STAGED_CONTENT=$(git show :$file 2>/dev/null)
-
-    # 检查是否有配置项被赋值（非空值）
-    SENSITIVE_LINES=$(echo "$STAGED_CONTENT" | grep -E "^[A-Za-z_]+.*=.*[^#\s]" | grep -v "^#" | grep -v "=$" | grep -v "= *$")
-
-    if [ -n "$SENSITIVE_LINES" ]; then
-        echo "❌ 检测到敏感信息: 文件 $file 中包含敏感信息"
-        echo "以下配置项被赋值（应该为空）:"
-        echo "$SENSITIVE_LINES"
-        echo ""
-        HAS_SENSITIVE_INFO=true
-
-        if [ "$STRICT_MODE" = "1" ]; then
-            echo "当前为严格模式，阻止整个提交"
-            echo "请确保所有配置项的值都为空，使用环境变量或命令行参数传递敏感信息"
-            echo "示例: GARMIN_GLOBAL_EMAIL = "
-            echo ""
-            echo "如果你确认要提交，请使用 'git commit --no-verify' 强制提交"
-            exit 1
-        else
-            echo "当前为自动模式，正在取消暂存 $file ..."
-            git reset HEAD "$file" > /dev/null 2>&1
-            echo "✅ $file 已从本次提交中移除"
-        fi
-    fi
-done
-
-if [ "$HAS_SENSITIVE_INFO" = true ] && [ "$STRICT_MODE" = "0" ]; then
-    echo ""
-    echo "💡 检测到敏感信息，已自动处理："
-    echo "  - config.ini 文件已从暂存区移除"
-    echo "  - 其他文件将正常提交"
-    echo ""
-    echo "正在提交非敏感文件..."
-
-    # 自动提交非敏感文件
-    git commit --no-verify -m "自动提交: 除 config.ini 外的文件"
-
-    echo "✅ 非敏感文件已提交"
-    echo "请修复 config.ini 中的敏感信息后重新添加"
-    exit 0  # 成功提交其他文件
-fi
-
-echo "✅ config.ini 文件检查通过，未发现敏感信息"
 exit 0
