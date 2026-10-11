@@ -10,7 +10,7 @@ def main():
     if garminGlobalClient is None:
         return
 
-    logger.warning("Starting to sync activity data from Garmin Global to Coros...")
+    logger.warning("Starting to sync activity data from Garmin Global to COROS...")
 
     db = getDbClient()
 

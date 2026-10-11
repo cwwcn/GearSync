@@ -31,7 +31,7 @@ class AwsOssClient:
 
         sts_token_response = json.loads(response.data)
         if sts_token_response["code"] != 200:
-            raise StsTokenError("Get AWS OSS STS Token Exception")
+            raise StsTokenError("Failed to retrieve the AWS OSS STS token.")
 
         credentials = sts_token_response["data"]["credentials"]
         v = sts_token_response["data"]["v"]

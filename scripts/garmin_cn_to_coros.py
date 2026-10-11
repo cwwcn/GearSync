@@ -10,7 +10,7 @@ def main():
     if garminCNClient is None:
         return
 
-    logger.warning("Starting to sync activity data from Garmin China to Coros...")
+    logger.warning("Starting to sync activity data from Garmin China to COROS...")
     db = getDbClient()
 
     corosClient = create_coros_client(logger)

@@ -58,12 +58,12 @@ class GarminGlobalClient:
                         self.garthClient.username
                     except Exception:
                         logger.warning(
-                            "Garmin_Global is not logging in or the token has expired. So start loading token now!")
+                            "The Garmin Global account is not logged in or its token has expired. Loading the token now.")
                         self.garthClient.configure(domain="garmin.com")
                         self.garthClient.loads(self.secret_string)
                         if self.garthClient.oauth2_token.expired:
                             self.garthClient.refresh_oauth2()
-                        logger.warning(f"Garmin_Global account {self.garthClient.username} token loaded successfully!")
+                        logger.warning(f"Successfully loaded the token for Garmin Global account {self.garthClient.username}.")
                         time.sleep(1)
                         del self.garthClient.sess.headers['User-Agent']
                 else:
@@ -71,18 +71,18 @@ class GarminGlobalClient:
                     try:
                         self.garthClient.username
                     except Exception:
-                        logger.warning("Garmin_Global is not logging in. So start logging in now!")
+                        logger.warning("The Garmin Global account is not logged in. Logging in now.")
                         self.garthClient.configure(domain="garmin.com")
                         self.garthClient.login(self.email, self.password)
-                        logger.warning(f"Garmin_Global account {self.email} logged in successfully!")
+                        logger.warning(f"Successfully logged in to Garmin Global as {self.email}.")
                         time.sleep(1)
                         del self.garthClient.sess.headers['User-Agent']
                 return func(self, *args, **kwargs)
             except (binascii.Error, AssertionError) as e:
                 if self.auth_method == 'token':
                     logger.warning(
-                        f"OAuth token authentication failed: {str(e)},Please check if GARMIN_CN_SECRET is correctly configured in your config file.You can regenerate the token using get_garmin_secret.py script.")
-                    raise Exception("Invalid OAuth token. Please reconfigure GARMIN_CN_SECRET.")
+                        f"OAuth token authentication failed: {str(e)}. Please check that GARMIN_GLOBAL_SECRET is configured correctly. You can regenerate the token using the get_garmin_secret.py script.")
+                    raise Exception("Invalid OAuth token. Please reconfigure GARMIN_GLOBAL_SECRET.")
                 else:
                     raise e
 
@@ -228,17 +228,17 @@ class GarminGlobalClient:
     def upload_to_coros(self, corosClient, db, source, target):
         all_activities = self.getAllActivities()
         if all_activities is None or len(all_activities) == 0:
-            logger.warning("has no garmin activities.")
+            logger.warning("No Garmin Global activities were found.")
             exit()
         for activity in all_activities:
             activity_id = activity["activityId"]
             db.saveActivity(activity_id, source, target)
-        logger.warning(f"has {len(all_activities)} all activities.")
+        logger.warning(f"Total number of Garmin Global activities: {len(all_activities)}.")
         un_sync_id_list = db.getUnSyncActivity(source, target)
         if un_sync_id_list is None or len(un_sync_id_list) == 0:
-            logger.warning("has no unsync garmin activities.")
+            logger.warning("No Garmin Global activities need to be synchronized.")
             exit()
-        logger.warning(f"has {len(un_sync_id_list)} un sync garmin activities.")
+        logger.warning(f"Number of Garmin Global activities awaiting synchronization: {len(un_sync_id_list)}.")
 
         # 初始化计数器
         total_sync_count = len(un_sync_id_list)
@@ -266,7 +266,7 @@ class GarminGlobalClient:
                 # 添加动态序数日志
                 ordinal = self._get_ordinal(index)
                 logger.info(
-                    f"------------------------- Start uploading the {ordinal} garmin_global activity data to coros. ------------------------")
+                    f"------------------------- Uploading the {ordinal} Garmin Global activity to COROS. ------------------------")
                 client = None
                 ## 中国区使用阿里云OSS
                 if corosClient.regionId == 2:
@@ -286,7 +286,7 @@ class GarminGlobalClient:
                     f"{un_sync_id}.zip", size)
                 if upload_result:
                     db.updateSyncStatus(un_sync_id, source, target)
-                    logger.warning(f"sync garmin activity: {un_sync_id} to coros success.")
+                    logger.warning(f"Successfully synchronized Garmin Global activity {un_sync_id} to COROS.")
                     # 解压zip文件，确定一个zip里边只有一个文件，所以只处理一个文件
                     with zipfile.ZipFile(file_path, 'r') as zip_ref:
                         file_list = zip_ref.namelist()
@@ -301,7 +301,7 @@ class GarminGlobalClient:
             except Exception as err:
                 print(err)
                 db.updateExceptionSyncStatus(un_sync_info["un_sync_id"], source, target)
-                logger.warning(f'sync garmin ${un_sync_info["un_sync_id"]} exception.')
+                logger.warning(f'An error occurred while synchronizing Garmin Global activity {un_sync_info["un_sync_id"]} to COROS.')
         # 计算失败条数
         failed_count = total_sync_count - success_count
         # 返回同步统计信息
@@ -322,17 +322,17 @@ class GarminGlobalClient:
     def uploadToGarminCN(self, garminCNClient, db, source, target):
         all_activities = self.getAllActivities()
         if all_activities is None or len(all_activities) == 0:
-            logger.warning("has no garmin_global activities.")
+            logger.warning("No Garmin Global activities were found.")
             exit()
-        logger.warning(f"has {len(all_activities)} all activities.")
+        logger.warning(f"Total number of Garmin Global activities: {len(all_activities)}.")
         for activity in all_activities:
             activity_id = activity['activityId']
             db.saveActivity(activity_id, source, target)
         un_sync_id_list = db.getUnSyncActivity(source, target)
         if un_sync_id_list is None or len(un_sync_id_list) == 0:
-            logger.warning("has no un garmin_global coros activities.")
+            logger.warning("No Garmin Global activities need to be synchronized.")
             exit()
-        logger.warning(f"has {len(un_sync_id_list)} un sync garmin_global activities.")
+        logger.warning(f"Number of Garmin Global activities awaiting synchronization: {len(un_sync_id_list)}.")
 
         # 初始化计数器
         total_sync_count = len(un_sync_id_list)
@@ -363,9 +363,9 @@ class GarminGlobalClient:
                         # 添加动态序数日志
                         ordinal = self._get_ordinal(index)
                         logger.info(
-                            f"---------------------- Start uploading the {ordinal} garmin_global activity data to garmin_cn. ----------------------")
+                            f"---------------------- Uploading the {ordinal} Garmin Global activity to Garmin China. ----------------------")
                         if upload_result.status_code == 202:
-                            logger.info(f"Upload garmin_global activity {un_sync_id} to garmin_cn success.")
+                            logger.info(f"Successfully uploaded Garmin Global activity {un_sync_id} to Garmin China.")
                             self.update_db_status(db, un_sync_id, source, target)
                             success_count += 1
                         else:
@@ -374,18 +374,18 @@ class GarminGlobalClient:
                             code = messages[0]['code']
                             content = messages[0]['content']
                             logger.warning(
-                                f"Upload garmin_global {un_sync_id} to garmin_cn fake fail: (the status_code is {code}, the content is {content})")
+                                f"Garmin China returned an import result for Garmin Global activity {un_sync_id}: code {code}, message: {content}")
                             if '202' == str(code):
                                 self.update_db_status(db, un_sync_id, source, target)
-                                logger.warning(f"sync garmin_global activity: {un_sync_id} to garmin_cn success.")
+                                logger.warning(f"Successfully synchronized Garmin Global activity {un_sync_id} to Garmin China.")
                                 success_count += 1
                     except Exception as err:
                         # db.updateExceptionSyncStatus(un_sync_id, source, target)
-                        logger.warning(f"Upload garmin_global {un_sync_id} to garmin_cn error inside: {err}")
+                        logger.warning(f"An error occurred while uploading Garmin Global activity {un_sync_id} to Garmin China: {err}")
                 else:
-                    logger.warning(f"No file found in zip for activity {un_sync_id}")
+                    logger.warning(f"No file was found in the ZIP archive for activity {un_sync_id}.")
             except Exception as err:
-                logger.warning(f"download garmin_global {un_sync_id} activity fail: {err}")
+                logger.warning(f"Failed to download Garmin Global activity {un_sync_id}: {err}")
 
         # 计算失败条数
         failed_count = total_sync_count - success_count
@@ -406,22 +406,22 @@ class GarminGlobalClient:
     def update_db_status(db, un_sync_id, source, target):
         try:
             db.updateSyncStatus(un_sync_id, source, target)
-            # logger.info(f"sync garmin_global ${un_sync_id} success,and the db has been sync.")
+            # logger.info(f"Successfully synchronized Garmin Global activity {un_sync_id} and updated the database.")
         except Exception as err:
             print(err)
             db.updateExceptionSyncStatus(un_sync_id, source, target)
-            logger.warning(f"sync garmin_global ${un_sync_id} exception.")
+            logger.warning(f"An error occurred while updating the synchronization status of Garmin Global activity {un_sync_id}.")
 
     @login
     def download_to_local(self):
         all_activities = self.getAllActivities()
         if all_activities == None or len(all_activities) == 0:
-            logger.warning("has no garmin activities.")
+            logger.warning("No Garmin Global activities were found.")
             exit()
 
         ts_str = re.sub(r'(\.\d*)?', '', str(time.time())) + '000'
         user_download_path = os.path.join(GARMIN_GLOBAL_FIT_DIR, f"fit_{ts_str}_download")
-        print('download to', user_download_path)
+        print('Downloading activities to:', user_download_path)
         if not os.path.exists(user_download_path):
             os.makedirs(user_download_path)
 
@@ -459,7 +459,7 @@ class GarminGlobalClient:
             file_path = os.path.join(user_file_data_path, f"{activity_id}.tcx")
             with open(file_path, "wb") as fb:
                 fb.write(file)
-                logger.warning(f"loaded garmin {activity_id} {user_file_data_path}")
+                logger.warning(f"Downloaded Garmin Global activity {activity_id} to {user_file_data_path}.")
         except Exception as err:
             print(err)
 

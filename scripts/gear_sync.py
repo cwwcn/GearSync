@@ -50,11 +50,11 @@ SYNC_MAP = {
 def main():
     # 检查SOURCE和TARGET配置
     if not SYNC_CONFIG.get("SOURCE"):
-        logger.error("SOURCE parameter is not configured. Please set SOURCE value before running the program.")
+        logger.error("The SOURCE parameter is not configured. Please set SOURCE before running the program.")
         return
 
     if not SYNC_CONFIG.get("TARGET"):
-        logger.error("TARGET parameter is not configured. Please set TARGET value before running the program.")
+        logger.error("The TARGET parameter is not configured. Please set TARGET before running the program.")
         return
 
     source = SYNC_CONFIG["SOURCE"].upper()
@@ -67,7 +67,7 @@ def main():
         module = __import__(module_name)
         module.main()
     else:
-        logger.error(f"Temporarily not supported sync direction: {source} to {target}")
+        logger.error(f"This synchronization direction is not currently supported: {source} to {target}.")
 
 
 if __name__ == "__main__":

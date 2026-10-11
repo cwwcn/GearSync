@@ -87,7 +87,7 @@ argv = get_argv()
 for k in SYNC_CONFIG:
     if argv.__dict__.get(k):
         SYNC_CONFIG[k] = argv.__dict__.get(k)
-        logger.warning(f"fill config value {k} = {str(SYNC_CONFIG[k])} from argv")
+        logger.warning(f"Loaded configuration value {k} = {str(SYNC_CONFIG[k])} from command-line arguments.")
     elif os.getenv(k):
         SYNC_CONFIG[k] = os.getenv(k)
     # 否则使用从配置文件加载的值或默认空值
@@ -96,7 +96,7 @@ for k in SYNC_CONFIG:
 for k in RQ_CONFIG:
     if argv.__dict__.get(k):
         RQ_CONFIG[k] = argv.__dict__.get(k)
-        logger.warning(f"fill config value {k} = {str(RQ_CONFIG[k])} from argv")
+        logger.warning(f"Loaded configuration value {k} = {str(RQ_CONFIG[k])} from command-line arguments.")
     elif os.getenv(k):
         RQ_CONFIG[k] = os.getenv(k)
     # 否则使用从配置文件加载的值或默认空值
@@ -105,7 +105,7 @@ for k in RQ_CONFIG:
 for k in NOTIFY_CONFIG:
     if argv.__dict__.get(k):
         NOTIFY_CONFIG[k] = argv.__dict__.get(k)
-        logger.warning(f"fill config value {k} = {str(NOTIFY_CONFIG[k])} from argv")
+        logger.warning(f"Loaded configuration value {k} = {str(NOTIFY_CONFIG[k])} from command-line arguments.")
     elif os.getenv(k):
         NOTIFY_CONFIG[k] = os.getenv(k)
 

@@ -183,7 +183,7 @@ class CorosClient:
         else:
             sync_start_time_ts = 0
         while True:
-            # logger.warning(f"get coros activities of pageNumber {pageNumber}.")
+            # logger.warning(f"Fetching COROS activities from page {pageNumber}.")
             activityInfoList = self.getActivities(pageNumber=pageNumber, pageSize=100)
             urlList = []
             for activityInfo in activityInfoList:
@@ -225,18 +225,18 @@ class CorosClient:
     def uploadToGarmin(self, garminClient, db, source, target):
         all_activities = self.getAllActivities()
         if all_activities is None or len(all_activities) == 0:
-            logger.warning("has no coros activities.")
+            logger.warning("No COROS activities were found.")
             exit()
-        logger.warning(f"has {len(all_activities)} all activities.")
+        logger.warning(f"Total number of COROS activities: {len(all_activities)}.")
         for activity in all_activities:
             activity_id = activity[0]
             db.saveActivity(activity_id, source, target)
 
         un_sync_id_list = db.getUnSyncActivity(source, target)
         if un_sync_id_list is None or len(un_sync_id_list) == 0:
-            logger.warning("has no un sync coros activities.")
+            logger.warning("No COROS activities need to be synchronized.")
             exit()
-        logger.warning(f"has {len(un_sync_id_list)} un sync coros activities.")
+        logger.warning(f"Number of COROS activities awaiting synchronization: {len(un_sync_id_list)}.")
 
         # 初始化计数器
         total_sync_count = len(un_sync_id_list)
@@ -248,7 +248,7 @@ class CorosClient:
                 download_url = self.find_url_from_id(all_activities, str(un_sync_id))
                 if download_url is None:
                     # 未找到对应的下载链接也视为同步
-                    logger.warning(f"coros ${un_sync_id} download url missing.")
+                    logger.warning(f"The download URL for COROS activity {un_sync_id} is missing.")
                     continue
 
                 fileResponse = self.download(download_url)
@@ -261,9 +261,9 @@ class CorosClient:
                     # 添加动态序数日志
                     ordinal = self._get_ordinal(index)
                     logger.info(
-                        f"--------------------------- Start uploading the {ordinal} coros activity data to garmin. ---------------------------")
+                        f"--------------------------- Uploading the {ordinal} COROS activity to Garmin. ---------------------------")
                     if upload_result.status_code == 202:
-                        logger.info(f"Upload coros {un_sync_id} to garmin success.")
+                        logger.info(f"Successfully uploaded COROS activity {un_sync_id} to Garmin.")
                         self.update_db_status(db, un_sync_id, source, target)
                         success_count += 1  # 增加成功计数
                     else:
@@ -272,14 +272,14 @@ class CorosClient:
                         code = messages[0]['code']
                         content = messages[0]['content']
                         logger.warning(
-                            f"Upload coros {un_sync_id} to garmin fake fail: (the status_code is {code}, the content is {content})")
+                            f"Garmin returned an import result for COROS activity {un_sync_id}: code {code}, message: {content}")
                         if '202' == str(code):
                             self.update_db_status(db, un_sync_id, source, target)
                             success_count += 1  # 增加成功计数
                 except Exception as e:
-                    logger.warning(f"Upload coros {un_sync_id} to garmin error inside: {e}")
+                    logger.warning(f"An error occurred while uploading COROS activity {un_sync_id} to Garmin: {e}")
             except Exception as err:
-                logger.warning(f"download coros {un_sync_id} activity fail: {err}")
+                logger.warning(f"Failed to download COROS activity {un_sync_id}: {err}")
 
         # 计算失败条数
         failed_count = total_sync_count - success_count
@@ -301,11 +301,11 @@ class CorosClient:
     def update_db_status(db, un_sync_id, source, target):
         try:
             db.updateSyncStatus(un_sync_id, source, target)
-            logger.info(f"sync coros activity {un_sync_id} upload to garmin success, and the db has been updated.")
+            logger.info(f"Successfully synchronized COROS activity {un_sync_id} to Garmin and updated the database.")
         except Exception as err:
             print(err)
             db.updateExceptionSyncStatus(un_sync_id, source, target)
-            logger.warning(f"sync coros ${un_sync_id} exception.")
+            logger.warning(f"An error occurred while updating the synchronization status of COROS activity {un_sync_id}.")
 
 
 class CorosLoginError(Exception):
