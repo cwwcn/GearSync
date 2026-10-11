@@ -8,7 +8,7 @@ sys.path.append(config_path)
 
 from db.rq_user_db import RQUserDB
 
-TIME_OUT = httpx.Timeout(1000.0, connect=1000.0)
+TIME_OUT = httpx.Timeout(30.0, connect=10.0)
 
 
 class RQConnect:
@@ -36,6 +36,7 @@ class RQConnect:
             headers=self.headers,
             data=data
         )
+        response.raise_for_status()
         result = response.json()
 
         ## 判断登录是否成功
@@ -98,6 +99,7 @@ class RQConnect:
             getUserInfoUrl,
             headers=getUserInfoHeader
         )
+        response.raise_for_status()
         result = response.json()
         if result['syscode'] == 200:
             return False

@@ -155,6 +155,8 @@ PYTHONPATH=scripts python3 scripts/utils/get_garmin_secret.py
 python3 scripts/rq_sign.py
 ```
 
+RQ 签到已适配新版网页入口及会话 Cookie，仍使用原有 `RQ_EMAIL`、`RQ_PASSWORD`、`AESKEY` 配置和本地令牌缓存。青龙任务入口不变；更新时无需删除 `db/rq.db`。网页拒绝缓存令牌时会重新登录并重试一次，签到失败时返回非零退出码。
+
 如果修改 RQrun 密码后本地令牌状态异常，请先备份或重命名 `db/rq.db`，再让程序重新创建数据库。
 
 ## 青龙面板部署
