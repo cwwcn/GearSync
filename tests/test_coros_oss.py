@@ -1,6 +1,8 @@
 import base64
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -74,7 +76,7 @@ class CorosOssCredentialsTests(unittest.TestCase):
                     headers={"Content-Type": "text/html"},
                     data=b"<html>test-login-token test-secret</html>",
                 )
-                with self.assertRaises(StsTokenError) as error:
+                with patch.object(self.client, 'login'), self.assertRaises(StsTokenError) as error:
                     self.client.getOssCredentials()
                 self.assertIn(f"HTTP {status}", str(error.exception))
                 self.assertIn("text/html", str(error.exception))
@@ -129,6 +131,25 @@ class OssInitializationTests(unittest.TestCase):
             endpoint_url="https://s3.eu-central-1.amazonaws.com",
         )
         self.assertIs(client.client, s3.return_value)
+
+    def test_aws_upload_error_is_propagated(self):
+        with patch('oss.aws_oss_client.boto3.client') as s3:
+            s3.return_value.upload_file.side_effect = TimeoutError('fixture')
+            with self.assertRaises(TimeoutError):
+                AwsOssClient(make_credentials('aws')).multipart_upload('source', 'fixture.zip')
+
+    def test_ali_abort_preserves_the_original_failure(self):
+        with tempfile.TemporaryDirectory() as directory, patch('oss.ali_oss_client.oss2.Bucket') as bucket:
+            path = Path(directory) / 'payload.zip'
+            path.write_bytes(b'dummy payload')
+            sdk = bucket.return_value
+            sdk.init_multipart_upload.return_value = SimpleNamespace(status=200, upload_id='one')
+            sdk.upload_part.side_effect = TimeoutError('part timed out')
+            sdk.abort_multipart_upload.side_effect = OSError('cleanup failed')
+            with self.assertRaisesRegex(TimeoutError, 'part timed out'):
+                AliOssClient(make_credentials()).multipart_upload(path, 'fixture.zip')
+            sdk.abort_multipart_upload.assert_called_once_with('fit_zip/fixture.zip', 'one')
+            sdk.complete_multipart_upload.assert_not_called()
 
 
 if __name__ == "__main__":

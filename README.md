@@ -2,12 +2,14 @@
 
 GearSync 用于在 Garmin 中国区、Garmin 国际区和 COROS（高驰）之间同步或迁移运动数据，并提供同步结果通知和 RQrun 自动签到功能。
 
+完整的系统架构、同步状态机、SQLite 表结构、日常查询 SQL 和故障恢复步骤见[技术说明](doc/gearsync-technical-guide.md)。
+
 ## 功能
 
 - 支持 Garmin 中国区、Garmin 国际区、COROS 任意两个平台之间的双向同步，共 6 种方向。
 - 支持指定同步起始日期或时间；不指定时同步全部历史数据。
 - Garmin 支持令牌和账号密码两种登录方式，配置令牌时优先使用令牌。
-- 使用本地 SQLite 记录各同步方向的处理状态，避免重复处理已成功同步的活动。
+- 使用 SQLite 按来源账号、目标账号和方向隔离扫描进度及逐活动状态；上传被受理后会在当次运行自动核对，避免定时任务间隔造成不必要的延迟。
 - 支持通过钉钉机器人发送同步结果。
 - 提供独立的 RQrun 自动签到脚本。
 
@@ -67,9 +69,11 @@ python3 scripts/gear_sync.py
 | `SOURCE` | 数据来源平台 | `GARMIN_CN`、`GARMIN_GLOBAL`、`COROS` |
 | `TARGET` | 数据目标平台，不能与来源相同 | `GARMIN_CN`、`GARMIN_GLOBAL`、`COROS` |
 | `SYNC_ACTIVITY_START_TIME` | 同步起始时间；留空表示全部历史数据 | `20250701` 或 `20250701083001` |
+| `SYNC_TIMEZONE` | 起始时间的 IANA 时区，默认 `Asia/Shanghai` | `Asia/Shanghai` |
+| `SYNC_ACTIVITY_ID` | 只处理指定源活动，用于单条验收或对账；正常定时任务留空 | Garmin 活动页的活动 ID |
 | `DOMAIN` | 获取 Garmin 令牌时选择区域 | 中国区使用 `CN`，国际区使用 `COM` |
 
-只填写日期时，程序按当天 `00:00:01` 作为起始时间；完整格式为 `YYYYMMDDHHMMSS`。
+只填写日期时，程序从指定时区当天 `00:00:00` 开始；完整格式为 `YYYYMMDDHHMMSS`。首次及每 30 天按配置范围扫描；日常扫描从进度回退 7 天捕捉延迟上传，已保存的待办独立处理。扫描未正常结束不会推进检查点。单次扫描最多检查 100 页、每页 100 条；如果未能确认稳定结束，会报错而不是静默截断。
 
 ### 平台登录配置
 
@@ -137,6 +141,21 @@ python3 scripts/gear_sync.py \
 | Garmin 中国区 → Garmin 国际区 | [garmin_cn_to_garmin_global.py](scripts/garmin_cn_to_garmin_global.py) |
 | Garmin 国际区 → Garmin 中国区 | [garmin_global_to_garmin_cn.py](scripts/garmin_global_to_garmin_cn.py) |
 
+### 同步结果与恢复
+
+- 正常完成或没有新活动返回 `0`；还有失败或尚未确认的活动返回 `1`；配置无效返回 `2`。钉钉发送失败不改变同步结果。
+- 对象存储未成功时不会提交高驰导入。提交遇到超时或响应只有受理信息时，当次运行先等 5 秒，再按任务 ID 或经过文件校验的目标记录对账，不重发不明结果。未确认则再等 5 秒查询，最多 6 轮；累计等待最多 30 秒，接口请求耗时另计。确认后立即停止核对并记录完成；仍无可靠证据才留给下次任务继续核对，时间相近不算确认成功。
+- 更新时保留 `db/activitySync.db`。旧记录没有账号标识，按方向绑定首次运行的源、目标账号；首次运行请使用原来的账号组合。历史完成不重传，历史未完成或异常记录进入待核对。不要在升级后混跑新旧版，也不要通过删库解除待核对。
+- 单条验收先在目标平台确认活动尚未导入，再用 `--SYNC_ACTIVITY_ID` 运行对应的固定方向入口。单条模式不处理其他待办，也不发送通知。每次运行都会执行当次自动核对；若本轮结束后仍待核对，后续同一命令只继续核对，不会重新上传。不要为了“试试看”而删除已完成状态或目标活动。
+
+同步状态主要保存在 `sync_transfers`（逐活动阶段、目标 ID、最近错误）和 `sync_runs`（扫描进度）两张表；`activity_table` 是旧版历史表，新版只在迁移旧记录时读取。连接数据库检查时建议使用只读模式：
+
+```bash
+sqlite3 -readonly db/activitySync.db
+```
+
+常见状态查询和字段解释见[技术说明：日常数据库查看](doc/gearsync-technical-guide.md#5-日常数据库查看)。
+
 ### 获取 Garmin 登录令牌
 
 在 `scripts/config.ini` 中配置 `DOMAIN` 和对应区域的 Garmin 邮箱、密码，然后运行：
@@ -191,10 +210,11 @@ RQ 签到已适配新版网页入口及会话 Cookie，仍使用原有 `RQ_EMAIL
 
 运行过程中会在以下目录保存数据：
 
-- `db/`：活动同步状态和 RQrun 登录状态。
-- `coros-fit/`：从 COROS 下载的活动文件。
-- `garmin-cn-fit/`：从 Garmin 中国区下载或解压的活动文件。
-- `garmin-global-fit/`：从 Garmin 国际区下载或解压的活动文件。
+- `db/activitySync.db`：`sync_transfers` 逐活动状态、`sync_runs` 扫描检查点、`sync_legacy_binding` 旧库迁移绑定，以及待退役的旧版 `activity_table`。
+- `db/rq.db`：RQrun 的本地加密令牌状态，与运动活动同步状态分离。
+- `db/activitySync.lock`：同一工作目录下避免活动同步任务并行运行的文件锁。
+- `db/activity-cache/`：分账号组合和方向保存的校验后原始文件与上传副本；不会改写 FIT 内容。
+- 旧版本放在 `coros-fit/`、`garmin-cn-fit/`、`garmin-global-fit/` 的文件不会自动迁移或删除。
 
 这些目录均为本地运行数据，不应提交到 Git。升级、清理或迁移前建议先备份。
 

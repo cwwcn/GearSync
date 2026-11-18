@@ -4,6 +4,10 @@ import os
 from oss2 import SizedFileAdapter, determine_part_size
 from oss2.models import PartInfo
 
+from conf.logger_config import get_logger
+
+
+logger = get_logger(__name__)
 
 class AliOssClient:
     def __init__(self, credentials):
@@ -21,36 +25,31 @@ class AliOssClient:
 
     def multipart_upload(self, filePath, fileName):
         key = f"fit_zip/{fileName}"
-        # print(key)
+        total_size = os.path.getsize(filePath)
+        part_size = determine_part_size(total_size, preferred_size=1024 * 1024)
+        parts = []
         init_multipart_upload_result = self.client.init_multipart_upload(key)
         if init_multipart_upload_result.status != 200:
             raise AliOssError("初始化阿里云分片上传异常")
         upload_id = init_multipart_upload_result.upload_id
-        total_size = os.path.getsize(filePath)
-        # determine_part_size方法用于确定分片大小。
-        part_size = determine_part_size(total_size, preferred_size=1024 * 1024)
-        parts = []
-
-        # 逐个上传分片。
-        with open(filePath, 'rb') as fileobj:
-            part_number = 1
-            offset = 0
-            while offset < total_size:
-                num_to_upload = min(part_size, total_size - offset)
-                # 调用SizedFileAdapter(fileobj, size)方法会生成一个新的文件对象，重新计算起始追加位置。
-                result = self.client.upload_part(key, upload_id, part_number,
-                                                 SizedFileAdapter(fileobj, num_to_upload))
-                parts.append(PartInfo(part_number, result.etag))
-
-                offset += num_to_upload
-                part_number += 1
-
-        # 完成分片上传。
-        # 如需在完成分片上传时设置相关Headers，请参考如下示例代码。
-        headers = dict()
-        # 设置文件访问权限ACL。此处设置为OBJECT_ACL_PRIVATE，表示私有权限。
-        # headers["x-oss-object-acl"] = oss2.OBJECT_ACL_PRIVATE
-        complete_multipart_upload_result = self.client.complete_multipart_upload(key, upload_id, parts, headers=headers)
+        try:
+            with open(filePath, 'rb') as fileobj:
+                offset = 0
+                while offset < total_size:
+                    part_number = len(parts) + 1
+                    chunk_size = min(part_size, total_size - offset)
+                    result = self.client.upload_part(key, upload_id, part_number, SizedFileAdapter(fileobj, chunk_size))
+                    parts.append(PartInfo(part_number, result.etag))
+                    offset += chunk_size
+            result = self.client.complete_multipart_upload(key, upload_id, parts)
+            if not 200 <= result.status < 300:
+                raise AliOssError('OSS multipart completion failed')
+        except Exception:
+            try:
+                self.client.abort_multipart_upload(key, upload_id)
+            except Exception as cleanup_error:
+                logger.warning('OSS could not abort an unfinished upload (%s)', type(cleanup_error).__name__)
+            raise
         return key
 
 

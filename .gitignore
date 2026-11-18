@@ -33,3 +33,5 @@ scripts/config.ini
 /coros-fit
 /garmin-cn-fit
 /garmin-global-fit
+/db/activity-cache/
+/db/activitySync.lock

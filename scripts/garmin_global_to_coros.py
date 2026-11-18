@@ -1,32 +1,9 @@
-# garmin_global_to_coros.py
-from gear_sync import getDbClient, logger
-from client_factory import create_coros_client, create_garmin_global_client
-from datetime import datetime
-from utils.notify_retry import send_notification_with_retry
+from sync_cli import run_direction
 
 
 def main():
-    garminGlobalClient = create_garmin_global_client(logger)
-    if garminGlobalClient is None:
-        return
-
-    logger.warning("Starting to sync activity data from Garmin Global to COROS...")
-
-    db = getDbClient()
-
-    corosClient = create_coros_client(logger)
-    if corosClient is None:
-        return
-
-    sync_result = garminGlobalClient.upload_to_coros(corosClient, db, 'GARMIN_GLOBAL', 'COROS')
-    # 返回同步统计信息
-    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    # 使用带重试机制的通知发送
-    try:
-        send_notification_with_retry("佳明国际区同步数据到高驰：", f"{current_time}，{sync_result['message']}")
-    except Exception as e:
-        logger.warning(f"发送钉钉通知失败（即使重试5次后）: {e}")
+    return run_direction("GARMIN_GLOBAL", "COROS")
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

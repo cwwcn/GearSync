@@ -1,7 +1,6 @@
 from conf.config import SYNC_CONFIG
 from coros.coros_client import CorosClient
-from garmin.garmin_cn_client import GarminCNClient
-from garmin.garmin_global_client import GarminGlobalClient
+from garmin.garmin_client import GarminCNClient, GarminGlobalClient
 
 
 def _has_required_config(required_configs, logger):
@@ -23,7 +22,7 @@ def create_coros_client(logger):
     coros_client = CorosClient(SYNC_CONFIG["COROS_EMAIL"], SYNC_CONFIG["COROS_PASSWORD"])
     logger.warning("The COROS account is not logged in or its token has expired. Logging in to COROS now.")
     coros_client.login()
-    logger.warning(f"Successfully logged in to COROS as {coros_client.email}.")
+    logger.info('Successfully logged in to COROS.')
     return coros_client
 
 

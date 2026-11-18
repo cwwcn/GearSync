@@ -1,181 +1,92 @@
-import io
 import tempfile
 import unittest
-import zipfile
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
-import garmin.garmin_cn_client as garmin_cn_module
-import garmin.garmin_global_client as garmin_global_module
-from garmin.garmin_cn_client import GarminCNClient
-from garmin.garmin_global_client import GarminGlobalClient
-from oss.sts_token_error import StsTokenError
-from tests.support import FakeActivityDB, garmin_business_response
+import requests
+
+from garmin.garmin_client import GarminCNClient, GarminGlobalClient, import_receipt
+from sync_types import Receipt, SyncError
 
 
-def build_fit_zip():
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w") as archive:
-        archive.writestr("101_ACTIVITY.fit", b"fit-data")
-    return buffer.getvalue()
+def response(status, body=None):
+    result = Mock(status_code=status)
+    if body is None:
+        result.json.side_effect = ValueError('empty')
+    else:
+        result.json.return_value = body
+    return result
 
 
-def build_logged_in_client(client_class):
-    client = client_class.__new__(client_class)
-    client.auth_method = "credentials"
-    client.garthClient = SimpleNamespace(username="offline-test")
-    client.getAllActivities = Mock(return_value=[{"activityId": 101}])
-    client.downloadFitActivity = Mock(return_value=build_fit_zip())
-    return client
+class GarminTransferTests(unittest.TestCase):
+    def test_accepted_is_distinct_from_confirmed(self):
+        self.assertEqual(Receipt(), import_receipt(response(202)))
+        self.assertEqual(Receipt('13'), import_receipt(response(202, {'uploadId': 13})))
+        self.assertEqual(Receipt('13', '42'), import_receipt(response(202, {'detailedImportResult': {
+            'uploadId': 13, 'successes': [{'internalId': 42}], 'failures': [],
+        }})))
 
+    def test_duplicate_requires_a_correlated_internal_id(self):
+        self.assertEqual(Receipt(), import_receipt(response(400, {'detailedImportResult': {
+                'failures': [{'messages': [{'code': 202}]}],
+        }})))
+        self.assertEqual(Receipt(remote_id='42'), import_receipt(response(409, {'detailedImportResult': {
+            'failures': [{'internalId': 42, 'messages': [{'code': 202}]}],
+        }})))
+        self.assertEqual(Receipt(), import_receipt(response(409, {'detailedImportResult': {
+            'failures': [{'internalId': 42, 'messages': [{'code': 999}]}],
+        }})))
 
-class GarminToGarminBehaviorTests(unittest.TestCase):
-    def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.fit_dir = Path(self.temp_dir.name)
+    def test_upload_uses_fresh_credentials_in_both_regions_and_does_not_replay_timeout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / '321.fit'
+            path.write_bytes(b'test multipart bytes')
+            for adapter in (GarminCNClient, GarminGlobalClient):
+                with self.subTest(adapter=adapter.__name__):
+                    client = adapter('test-token')
+                    self.assertEqual(client.domain, client.garthClient.domain)
+                    garth_client = Mock(domain=client.domain, oauth1_token=object(),
+                                        oauth2_token=SimpleNamespace(expired=True))
+                    garth_client.refresh_oauth2.side_effect = lambda: setattr(
+                        garth_client, 'oauth2_token', SimpleNamespace(expired=False)
+                    )
+                    client.garthClient = garth_client
+                    client.upload_session = Mock()
+                    client.upload_session.post.side_effect = requests.ReadTimeout('unknown result')
+                    with self.assertRaisesRegex(SyncError, 'result unknown'):
+                        client.upload_activity(path)
+                    garth_client.refresh_oauth2.assert_called_once_with()
+                    client.upload_session.post.assert_called_once()
+                    request = client.upload_session.post.call_args
+                    self.assertIn(client.domain, request.args[0])
+                    self.assertFalse(request.kwargs['allow_redirects'])
+                    self.assertEqual(str(garth_client.oauth2_token), request.kwargs['headers']['Authorization'])
 
-    def tearDown(self):
-        self.temp_dir.cleanup()
+    def test_conclusive_401_refreshes_and_retries_once(self):
+        client = GarminCNClient('test-token')
+        client.ensure_session = Mock()
+        client.garthClient.oauth2_token = 'test-token'
+        client.upload_session = Mock()
+        client.upload_session.post.side_effect = [response(401), response(202)]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / '321.fit'
+            path.touch()
+            self.assertEqual(Receipt(), client.upload_activity(path))
+        self.assertEqual(2, client.upload_session.post.call_count)
+        client.ensure_session.assert_called_with(force=True)
 
-    def test_garmin_cn_to_global_unzips_fit_and_accepts_http_202(self):
-        source_client = build_logged_in_client(GarminCNClient)
-        target_client = Mock()
-        target_client.upload_activity.return_value = SimpleNamespace(
-            status_code=202, text=""
-        )
-        db = FakeActivityDB([101])
+    def test_wrong_region_token_is_rejected_before_network_use(self):
+        client = GarminCNClient('test-token')
+        client.garthClient = Mock(domain='garmin.com', oauth1_token=object())
+        with self.assertRaisesRegex(SyncError, 'different region'):
+            client.account_id()
+        client.garthClient.refresh_oauth2.assert_not_called()
 
-        with patch.object(
-            garmin_cn_module, "GARMIN_CN_FIT_DIR", str(self.fit_dir)
-        ), patch.object(garmin_cn_module, "logger", Mock()):
-            result = source_client.uploadToGarminGlobal(
-                target_client, db, "GARMIN_CN", "GARMIN_GLOBAL"
-            )
-
-        extracted_fit = self.fit_dir / "101_ACTIVITY.fit"
-        target_client.upload_activity.assert_called_once_with(str(extracted_fit))
-        self.assertEqual(b"fit-data", extracted_fit.read_bytes())
-        self.assertFalse((self.fit_dir / "101.zip").exists())
-        self.assertEqual([(101, "GARMIN_CN", "GARMIN_GLOBAL")], db.synced)
-        self.assertEqual((1, 1, 0), (result["total"], result["success"], result["failed"]))
-
-    def test_garmin_global_to_cn_accepts_the_existing_business_code_202(self):
-        source_client = build_logged_in_client(GarminGlobalClient)
-        target_client = Mock()
-        target_client.upload_activity.return_value = garmin_business_response(
-            202, "already imported"
-        )
-        db = FakeActivityDB([101])
-
-        with patch.object(
-            garmin_global_module, "GARMIN_GLOBAL_FIT_DIR", str(self.fit_dir)
-        ), patch.object(garmin_global_module, "logger", Mock()):
-            result = source_client.uploadToGarminCN(
-                target_client, db, "GARMIN_GLOBAL", "GARMIN_CN"
-            )
-
-        self.assertEqual([(101, "GARMIN_GLOBAL", "GARMIN_CN")], db.synced)
-        self.assertEqual((1, 1, 0), (result["total"], result["success"], result["failed"]))
-
-
-class GarminToCorosBehaviorTests(unittest.TestCase):
-    def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.fit_dir = Path(self.temp_dir.name)
-
-    def tearDown(self):
-        self.temp_dir.cleanup()
-
-    def test_china_coros_region_uses_aliyun_oss_and_registers_the_same_object(self):
-        source_client = build_logged_in_client(GarminCNClient)
-        coros_client = Mock()
-        coros_client.regionId = 2
-        coros_client.userId = "coros-user"
-        coros_client.getOssCredentials.return_value = {"Bucket": "coros-oss"}
-        coros_client.uploadActivity.return_value = True
-        db = FakeActivityDB([101])
-        oss_client = Mock()
-
-        with patch.object(
-            garmin_cn_module, "GARMIN_CN_FIT_DIR", str(self.fit_dir)
-        ), patch.object(
-            garmin_cn_module, "AliOssClient", return_value=oss_client
-        ) as ali_oss_class, patch.object(
-            garmin_cn_module, "AwsOssClient"
-        ) as aws_oss_class, patch.object(
-            garmin_cn_module, "calculate_md5_file", return_value="fit-md5"
-        ), patch.object(garmin_cn_module, "logger", Mock()):
-            result = source_client.upload_to_coros(
-                coros_client, db, "GARMIN_CN", "COROS"
-            )
-
-        zip_path = self.fit_dir / "101.zip"
-        ali_oss_class.assert_called_once_with(coros_client.getOssCredentials.return_value)
-        aws_oss_class.assert_not_called()
-        oss_client.multipart_upload.assert_called_once_with(
-            str(zip_path), "coros-user/fit-md5.zip"
-        )
-        coros_client.uploadActivity.assert_called_once_with(
-            "fit_zip/coros-user/fit-md5.zip",
-            "fit-md5",
-            "101.zip",
-            len(build_fit_zip()),
-        )
-        self.assertFalse(zip_path.exists())
-        self.assertEqual(b"fit-data", (self.fit_dir / "101_ACTIVITY.fit").read_bytes())
-        self.assertEqual([(101, "GARMIN_CN", "COROS")], db.synced)
-        self.assertEqual((1, 1, 0), (result["total"], result["success"], result["failed"]))
-
-    def test_sts_failure_keeps_the_activity_pending_and_reports_failure(self):
-        for client_class, module, fit_dir_key, source in (
-            (GarminCNClient, garmin_cn_module, "GARMIN_CN_FIT_DIR", "GARMIN_CN"),
-            (GarminGlobalClient, garmin_global_module, "GARMIN_GLOBAL_FIT_DIR", "GARMIN_GLOBAL"),
-        ):
-            with self.subTest(source=source):
-                source_client = build_logged_in_client(client_class)
-                coros_client = Mock()
-                coros_client.regionId = 2
-                coros_client.getOssCredentials.side_effect = StsTokenError("STS HTTP 401")
-                db = FakeActivityDB([101])
-
-                with patch.object(module, fit_dir_key, str(self.fit_dir)), patch.object(
-                    module, "AliOssClient"
-                ) as oss_class, patch.object(module, "logger", Mock()):
-                    result = source_client.upload_to_coros(coros_client, db, source, "COROS")
-
-                oss_class.assert_not_called()
-                coros_client.uploadActivity.assert_not_called()
-                self.assertEqual([], db.synced)
-                self.assertEqual([], db.exceptions)
-                self.assertEqual((1, 0, 1), (result["total"], result["success"], result["failed"]))
-                self.assertTrue((self.fit_dir / "101.zip").exists())
-
-    def test_aws_coros_regions_receive_the_authenticated_credentials(self):
-        for client_class, module, fit_dir_key, source in (
-            (GarminCNClient, garmin_cn_module, "GARMIN_CN_FIT_DIR", "GARMIN_CN"),
-            (GarminGlobalClient, garmin_global_module, "GARMIN_GLOBAL_FIT_DIR", "GARMIN_GLOBAL"),
-        ):
-            for region_id in (1, 3):
-                with self.subTest(source=source, region_id=region_id):
-                    source_client = build_logged_in_client(client_class)
-                    coros_client = Mock()
-                    coros_client.regionId = region_id
-                    coros_client.userId = "coros-user"
-                    coros_client.uploadActivity.return_value = True
-                    db = FakeActivityDB([101])
-                    with patch.object(module, fit_dir_key, str(self.fit_dir)), patch.object(
-                        module, "AwsOssClient"
-                    ) as oss_class, patch.object(module, "AliOssClient") as ali_class, patch.object(
-                        module, "logger", Mock()
-                    ):
-                        result = source_client.upload_to_coros(coros_client, db, source, "COROS")
-
-                    oss_class.assert_called_once_with(coros_client.getOssCredentials.return_value)
-                    ali_class.assert_not_called()
-                    self.assertEqual([(101, source, "COROS")], db.synced)
-                    self.assertEqual(1, result["success"])
-
-
-if __name__ == "__main__":
-    unittest.main()
+    def test_status_lookup_only_trusts_matching_task(self):
+        client = GarminCNClient('token')
+        client.ensure_session = Mock()
+        client.garthClient = Mock()
+        client.garthClient.get.return_value = response(200, {'uploadId': 555, 'successes': [{'internalId': 42}]})
+        self.assertEqual('', client.lookup_import('12'))
+        self.assertEqual('42', client.lookup_import('555'))

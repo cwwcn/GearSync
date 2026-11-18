@@ -1,25 +1,34 @@
-import os
-from datetime import datetime
-import urllib3
-import json
 import hashlib
+import json
+from pathlib import Path
+from urllib.parse import quote, urlencode, urljoin, urlsplit
+
 import certifi
-from urllib.parse import quote
+import urllib3
 
-from conf.config import SYNC_CONFIG, COROS_FIT_DIR
-from .region_config import REGIONCONFIG
-from .sts_config import STS_CONFIG_COROS
-from conf.logger_config import get_logger
+from activity_files import MAX_BYTES
+from oss.ali_oss_client import AliOssClient
+from oss.aws_oss_client import AwsOssClient
 from oss.sts_token_error import StsTokenError
+from sync_types import Activity, ObjectUpload, Receipt, Rejected, SyncError, remote_id
 from utils.coros_oss_credients_utils import decode
+from utils.md5_utils import calculate_md5_file
 
-logger = get_logger(__name__)
+from .region_config import REGIONCONFIG
+
+
+TIMEOUT = urllib3.Timeout(connect=10, read=30)
+READ_RETRIES = urllib3.Retry(total=2, backoff_factor=0.5, status_forcelist=(408, 429, 500, 502, 503, 504),
+                             backoff_max=5, respect_retry_after_header=False, raise_on_status=False)
+COROS_CN = REGIONCONFIG[2]
+
+
+class CorosLoginError(SyncError):
+    pass
 
 
 class CorosClient:
-
-    def __init__(self, email, password) -> None:
-
+    def __init__(self, email, password):
         self.email = email
         self.password = password
         self.req = urllib3.PoolManager(cert_reqs='CERT_REQUIRED', ca_certs=certifi.where())
@@ -28,347 +37,222 @@ class CorosClient:
         self.regionId = None
         self.teamapi = None
 
-    ## 登录接口
+    @staticmethod
+    def _headers(region):
+        return {
+            'Accept': 'application/json, text/plain, */*',
+            'User-Agent': 'Mozilla/5.0',
+            'referer': region['hostname'] + '/',
+            'origin': region['hostname'],
+        }
+
+    def getHeaders(self):
+        return dict(self._headers(REGIONCONFIG[self.regionId]), accesstoken=self.accessToken)
+
+    @staticmethod
+    def _json(response, operation):
+        try:
+            payload = json.loads(response.data)
+        except (ValueError, UnicodeError) as error:
+            raise SyncError(f'{operation}: invalid JSON (HTTP {response.status})') from error
+        if not isinstance(payload, dict):
+            raise SyncError(f'{operation}: invalid JSON object')
+        return payload
+
+    def _request(self, operation, method, url, *, read=False, **kwargs):
+        try:
+            return self.req.request(method, url, timeout=TIMEOUT, redirect=False,
+                                    retries=READ_RETRIES if read and method == 'GET' else False, **kwargs)
+        except urllib3.exceptions.HTTPError as error:
+            raise SyncError(f'{operation}: network failure') from error
+
     def login(self):
+        body = json.dumps({'account': self.email, 'pwd': hashlib.md5(self.password.encode()).hexdigest(),
+                           'accountType': 2})
+        headers = dict(self._headers(COROS_CN), **{'Content-Type': 'application/json;charset=UTF-8'})
+        response = self._request('COROS login', 'POST', COROS_CN['teamapi'] + '/account/login',
+                                 headers=headers, body=body)
+        if response.status != 200:
+            raise CorosLoginError(f'COROS login: HTTP {response.status}')
+        payload = self._json(response, 'COROS login')
+        data = payload.get('data')
+        if payload.get('result') != '0000' or not isinstance(data, dict):
+            raise CorosLoginError('COROS login rejected')
+        identity = remote_id(data.get('userId'))
+        token = data.get('accessToken')
+        region_value = remote_id(data.get('regionId'))
+        region_id = int(region_value) if region_value.isdecimal() else None
+        if not identity or not isinstance(token, str) or not token or region_id not in REGIONCONFIG:
+            raise CorosLoginError('COROS login returned invalid account or region data')
+        if self.userId is not None and (identity != self.userId or region_id != self.regionId):
+            raise CorosLoginError('COROS account or region changed during synchronization')
+        self.accessToken = token
+        self.userId = identity
+        self.regionId = region_id
+        self.teamapi = REGIONCONFIG[region_id]['teamapi']
 
-        login_url = "https://teamcnapi.coros.com/account/login"
-
-        login_data = {
-            "account": self.email,
-            "pwd": hashlib.md5(self.password.encode()).hexdigest(),  ##MD5加密密码
-            "accountType": 2,
-        }
-        headers = {
-            "Accept": "application/json, text/plain, */*",
-            "Content-Type": "application/json;charset=UTF-8",
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.39 Safari/537.36",
-            "referer": "https://trainingcn.coros.com/",
-            "origin": "https://trainingcn.coros.com/",
-        }
-
-        login_body = json.dumps(login_data)
-        response = self.req.request('POST', login_url, body=login_body, headers=headers)
-
-        login_response = json.loads(response.data)
-        login_result = login_response["result"]
-        if login_result != "0000":
-            raise CorosLoginError("高驰登录异常，异常原因为：" + login_response["message"])
-
-        accessToken = login_response["data"]["accessToken"]
-        userId = login_response["data"]["userId"]
-        regionId = login_response["data"]["regionId"]
-        self.accessToken = accessToken
-        self.userId = userId
-        self.regionId = regionId
-        self.teamapi = REGIONCONFIG[self.regionId]['teamapi']
-
-    # 上传运动。这个是大佬使用oss方式上传的方法，因为官网就是这样，那就用这样的方式吧，稳妥一些
-    def uploadActivity(self, oss_object, md5, fileName, size):
-        ## 判断Token 是否为空
+    def ensure_session(self):
         if self.accessToken is None:
             self.login()
 
-        upload_url = "https://teamcnapi.coros.com/activity/fit/import"
+    def account_id(self):
+        self.ensure_session()
+        return f'{self.regionId}:{self.userId}'
 
-        headers = {
-            "Accept": "application/json, text/plain, */*",
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.39 Safari/537.36",
-            "referer": "https://trainingcn.coros.com/",
-            "origin": "https://trainingcn.coros.com/",
-            "accesstoken": self.accessToken,
-        }
-        try:
-            bucket = STS_CONFIG_COROS[self.regionId]["bucket"]
-            serviceName = STS_CONFIG_COROS[self.regionId]["service"]
-            data = {"source": 1, "timezone": 32, "bucket": f"{bucket}", "md5": f"{md5}", "size": size,
-                    "object": f"{oss_object}", "serviceName": f"{serviceName}", "oriFileName": f"{fileName}"}
-            json_data = json.dumps(data)
-            json_str = str(json_data)
-            # 调试打印出来上传时候的json
-            logger.info(json_str)
-            response = self.req.request(
-                method='POST',
-                url=upload_url,
-                fields={"jsonParameter": json_str},
-                headers=headers
-            )
-            upload_response = json.loads(response.data)
-            if upload_response["data"].get("status") == 2 and upload_response["result"] == "0000":
-                return True
-            else:
-                return False
-        except Exception as err:
-            logger.warning(err)
-            exit()
-
-    ## 登录装饰器
-    def loginCheck(func):
-        def ware(self, *args, **kwargs):
-            ## 判断Token 是否为空
-            if self.accessToken == None:
+    def _api_read(self, operation, method, path, **kwargs):
+        self.ensure_session()
+        for attempt in range(2):
+            response = self._request(operation, method, self.teamapi + path, read=True,
+                                     headers=self.getHeaders(), **kwargs)
+            if response.status == 401 and attempt == 0:
                 self.login()
+                continue
+            if response.status != 200:
+                raise SyncError(f'{operation}: HTTP {response.status}')
+            payload = self._json(response, operation)
+            if payload.get('result') != '0000' or not isinstance(payload.get('data'), dict):
+                raise SyncError(f'{operation}: unexpected business response')
+            return payload['data']
 
-            return func(self, *args, **kwargs)
-
-        return ware
-
-    def getHeaders(self):
-        headers = {
-            "Accept": "application/json, text/plain, */*",
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.39 Safari/537.36",
-            "referer": "https://trainingcn.coros.com/",
-            "origin": "https://trainingcn.coros.com/",
-            "accesstoken": self.accessToken,
-        }
-        return headers
-
-    @loginCheck
     def getOssCredentials(self):
+        self.ensure_session()
         region = REGIONCONFIG[self.regionId]
-        headers = self.getHeaders()
-        headers['Cookie'] = f"{region['TOKEN']}={quote(self.accessToken, safe='')}"
-        try:
-            response = self.req.request(
-                'GET',
-                f"{region['hostname']}/api/proxy/oss/sts",
-                headers=headers,
-                timeout=30,
-                redirect=False
-            )
-        except urllib3.exceptions.HTTPError as err:
-            raise StsTokenError("COROS OSS STS request failed due to a network error.") from err
-
-        content_type = response.headers.get('Content-Type', 'unknown')
-        if response.status != 200:
-            raise StsTokenError(
-                f"COROS OSS STS request failed (HTTP {response.status}, Content-Type {content_type})."
-            )
-        try:
-            payload = json.loads(response.data)
-        except (ValueError, UnicodeError) as err:
-            raise StsTokenError(
-                f"COROS OSS STS returned invalid JSON (HTTP {response.status}, Content-Type {content_type})."
-            ) from err
-        if not isinstance(payload, dict) or payload.get('code') != 200:
-            raise StsTokenError("COROS OSS STS did not return business code 200.")
-        try:
-            encoded_credentials = payload['data']['credentials']
-            if not isinstance(encoded_credentials, str):
-                raise ValueError("Invalid encoded OSS credentials")
-            credentials = decode(encoded_credentials)
-            required_keys = ('AccessKeyId', 'Bucket', 'Region')
-            if payload['data']['service'] == 'aliyun':
-                required_keys += ('AccessKeySecret', 'SecurityToken')
-            elif payload['data']['service'] == 'aws':
-                required_keys += ('SecretAccessKey', 'SessionToken')
-            else:
-                raise ValueError("Unsupported OSS service")
-            if not isinstance(credentials, dict) or any(not credentials.get(key) for key in required_keys):
-                raise ValueError("Missing OSS credential fields")
-        except (KeyError, TypeError, ValueError, UnicodeError) as err:
-            raise StsTokenError("COROS OSS STS returned invalid credentials.") from err
-        return credentials
-
-    ## 获取下载链接
-    @loginCheck
-    def getDownloadUrl(self, labelId, sportType, fileType=4):
-        down_url = f'https://teamcnapi.coros.com/activity/detail/download?labelId={labelId}&sportType={sportType}&fileType=4'
-        try:
-            response = self.req.request(
-                method='POST',
-                url=down_url,
-                fields={},
-                headers=self.getHeaders()
-            )
-            down_response = json.loads(response.data)
-            return down_response["data"]["fileUrl"]
-        except Exception as err:
-            exit()
-
-    ## 下载
-    @loginCheck
-    def download(self, url):
-        try:
-            response = self.req.request(
-                method='GET',
-                url=url,
-                fields={},
-                headers=self.getHeaders()
-            )
-            return response
-        except Exception as err:
-            exit()
-
-    ## 获取运动
-    @loginCheck
-    def getActivities(self, pageNumber: int, pageSize: int):
-
-        listUrl = f'https://teamcnapi.coros.com/activity/query?size={str(pageSize)}&pageNumber={str(pageNumber)}&modeList='
-
-        try:
-            response = self.req.request(
-                method='GET',
-                url=listUrl,
-                fields={},
-                headers=self.getHeaders()
-            )
-            responseData = json.loads(response.data)
-            data = responseData.get('data', {})
-            dataList = data.get('dataList', [])
-            return dataList
-        except Exception as err:
-            exit()
-
-    ## 获取所有运动
-    def getAllActivities(self):
-        all_urlList = []
-        pageNumber = 1
-        # 起始同步时间 比对的是时间戳
-        sync_start_time_strRaw = SYNC_CONFIG["SYNC_ACTIVITY_START_TIME"].strip()
-        if sync_start_time_strRaw:
-            # 如果长度为8（格式为YYYYMMDD），则自动添加"000101"表示00:01:01
-            if len(sync_start_time_strRaw) == 8:
-                sync_start_time_strRaw += "000001"
-            sync_start_time_ts = int(datetime.strptime(sync_start_time_strRaw, "%Y%m%d%H%M%S").timestamp() * 1000)
-        else:
-            sync_start_time_ts = 0
-        while True:
-            # logger.warning(f"Fetching COROS activities from page {pageNumber}.")
-            activityInfoList = self.getActivities(pageNumber=pageNumber, pageSize=100)
-            urlList = []
-            for activityInfo in activityInfoList:
-                labelId = activityInfo["labelId"]
-                sportType = activityInfo["sportType"]
-                startTime = int(f"{activityInfo['startTime']}000")
-                # 同步起始时间之前的历史纪录不再查询及同步
-                if startTime < sync_start_time_ts:
-                    if len(urlList) > 0:
-                        all_urlList.extend(urlList)
-                    return all_urlList
-
-                activityDownloadUrl = self.getDownloadUrl(labelId, sportType)
-                if (activityDownloadUrl):
-                    urlList.append((labelId, activityDownloadUrl, startTime))  # 已元祖形式存储
-            if len(urlList) > 0:
-                all_urlList.extend(urlList)
-            else:
-                return all_urlList
-            pageNumber += 1
-
-    @staticmethod
-    def find_url_from_id(list, id):
-        for item in list:
-            if item[0] == id:
-                return item[1]
-        return None
-
-        # 添加辅助方法来生成序数
-
-    @staticmethod
-    def _get_ordinal(n):
-        if 10 <= n % 100 <= 20:
-            suffix = 'th'
-        else:
-            suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
-        return f"{n}{suffix}"
-
-    def uploadToGarmin(self, garminClient, db, source, target):
-        all_activities = self.getAllActivities()
-        if all_activities is None or len(all_activities) == 0:
-            logger.warning("No COROS activities were found.")
-            exit()
-        logger.warning(f"Total number of COROS activities: {len(all_activities)}.")
-        for activity in all_activities:
-            activity_id = activity[0]
-            db.saveActivity(activity_id, source, target)
-
-        un_sync_id_list = db.getUnSyncActivity(source, target)
-        if un_sync_id_list is None or len(un_sync_id_list) == 0:
-            logger.warning("No COROS activities need to be synchronized.")
-            exit()
-        logger.warning(f"Number of COROS activities awaiting synchronization: {len(un_sync_id_list)}.")
-
-        # 初始化计数器
-        total_sync_count = len(un_sync_id_list)
-        success_count = 0
-
-        # 在循环开始前添加索引跟踪
-        for index, un_sync_id in enumerate(un_sync_id_list, start=1):
+        for attempt in range(2):
+            headers = self.getHeaders()
+            headers['Cookie'] = f"{region['TOKEN']}={quote(self.accessToken, safe='')}"
             try:
-                download_url = self.find_url_from_id(all_activities, str(un_sync_id))
-                if download_url is None:
-                    # 未找到对应的下载链接也视为同步
-                    logger.warning(f"The download URL for COROS activity {un_sync_id} is missing.")
-                    continue
+                response = self.req.request('GET', f"{region['hostname']}/api/proxy/oss/sts",
+                                            headers=headers, timeout=30, redirect=False, retries=READ_RETRIES)
+            except urllib3.exceptions.HTTPError as error:
+                raise StsTokenError('COROS OSS STS request failed due to a network error.') from error
+            if response.status != 401 or attempt == 1:
+                break
+            try:
+                self.login()
+            except SyncError as error:
+                raise StsTokenError('COROS OSS STS request failed (HTTP 401); reauthentication failed.') from error
 
-                fileResponse = self.download(download_url)
-                file_path = os.path.join(COROS_FIT_DIR, f"{un_sync_id}.fit")
-                with open(file_path, "wb") as fb:
-                    fb.write(fileResponse.data)
-
-                try:
-                    upload_result = garminClient.upload_activity(file_path)
-                    # 添加动态序数日志
-                    ordinal = self._get_ordinal(index)
-                    logger.info(
-                        f"--------------------------- Uploading the {ordinal} COROS activity to Garmin. ---------------------------")
-                    if upload_result.status_code == 202:
-                        logger.info(f"Successfully uploaded COROS activity {un_sync_id} to Garmin.")
-                        self.update_db_status(db, un_sync_id, source, target)
-                        success_count += 1  # 增加成功计数
-                    else:
-                        responseData = json.loads(upload_result.text)
-                        messages = responseData['detailedImportResult']['failures'][0]['messages']
-                        code = messages[0]['code']
-                        content = messages[0]['content']
-                        logger.warning(
-                            f"Garmin returned an import result for COROS activity {un_sync_id}: code {code}, message: {content}")
-                        if '202' == str(code):
-                            self.update_db_status(db, un_sync_id, source, target)
-                            success_count += 1  # 增加成功计数
-                except Exception as e:
-                    logger.warning(f"An error occurred while uploading COROS activity {un_sync_id} to Garmin: {e}")
-            except Exception as err:
-                logger.warning(f"Failed to download COROS activity {un_sync_id}: {err}")
-
-        # 计算失败条数
-        failed_count = total_sync_count - success_count
-        # 返回同步统计信息
-        if failed_count > 0:
-            notifyInfo = f"同步任务执行完成，本次共同步{total_sync_count}条数据，成功同步{success_count}条，{failed_count}条数据同步失败。"
-        else:
-            notifyInfo = f"同步任务执行完成，成功同步{total_sync_count}条数据。"
-
-        return {
-            "message": notifyInfo,
-            "total": total_sync_count,
-            "success": success_count,
-            "failed": failed_count
-        }
-
-    # 更新数据库同步状态
-    @staticmethod
-    def update_db_status(db, un_sync_id, source, target):
+        content_type = response.headers.get('Content-Type', 'unknown').split(';', 1)[0]
+        if content_type not in ('application/json', 'text/html', 'text/plain'):
+            content_type = 'unknown'
+        if response.status != 200:
+            raise StsTokenError(f'COROS OSS STS request failed (HTTP {response.status}, Content-Type {content_type}).')
         try:
-            db.updateSyncStatus(un_sync_id, source, target)
-            logger.info(f"Successfully synchronized COROS activity {un_sync_id} to Garmin and updated the database.")
-        except Exception as err:
-            print(err)
-            db.updateExceptionSyncStatus(un_sync_id, source, target)
-            logger.warning(f"An error occurred while updating the synchronization status of COROS activity {un_sync_id}.")
+            payload = self._json(response, 'COROS OSS STS')
+        except SyncError as error:
+            raise StsTokenError(str(error)) from error
+        if payload.get('code') != 200:
+            raise StsTokenError('COROS OSS STS did not return business code 200.')
+        try:
+            encoded = payload['data']['credentials']
+            if not isinstance(encoded, str):
+                raise ValueError('Invalid encoded OSS credentials')
+            credentials = decode(encoded)
+            fields = {'aliyun': ('AccessKeySecret', 'SecurityToken'), 'aws': ('SecretAccessKey', 'SessionToken')}
+            required_keys = ('AccessKeyId', 'Bucket', 'Region') + fields[payload['data']['service']]
+            if not isinstance(credentials, dict) or any(
+                not isinstance(credentials.get(key), str) or not credentials[key] for key in required_keys
+            ):
+                raise ValueError('Missing OSS credential fields')
+            return {key: credentials[key] for key in required_keys}
+        except (KeyError, TypeError, ValueError, UnicodeError) as error:
+            raise StsTokenError('COROS OSS STS returned invalid credentials.') from error
 
+    @staticmethod
+    def _activity(item):
+        if not isinstance(item, dict):
+            raise SyncError('COROS activity metadata is invalid')
+        identity = remote_id(item.get('labelId'))
+        sport = remote_id(item.get('sportType'))
+        timestamp = remote_id(item.get('startTime'))
+        if not identity or not sport or not timestamp.isdecimal() or int(timestamp) <= 0:
+            raise SyncError('COROS activity metadata is invalid')
+        timestamp = int(timestamp)
+        return Activity(identity, timestamp * 1000 if timestamp < 10**11 else timestamp, sport)
 
-class CorosLoginError(Exception):
+    def list_page(self, page, size):
+        params = urlencode({'size': size, 'pageNumber': page + 1, 'modeList': ''})
+        data = self._api_read('COROS activity list', 'GET', f'/activity/query?{params}')
+        items = data.get('dataList')
+        if not isinstance(items, list):
+            raise SyncError('COROS activity list has no activity array')
+        return [self._activity(item) for item in items]
 
-    def __init__(self, status):
-        """Initialize."""
-        super(CorosLoginError, self).__init__(status)
-        self.status = status
+    def download_activity(self, activity):
+        params = urlencode({'labelId': activity.id, 'sportType': activity.sport, 'fileType': 4})
+        data = self._api_read('COROS download link', 'POST', f'/activity/detail/download?{params}', fields={})
+        url = data.get('fileUrl')
+        if not isinstance(url, str):
+            raise SyncError('COROS did not return a download link')
+        for attempt in range(4):
+            parsed = urlsplit(url)
+            if parsed.scheme != 'https' or not parsed.hostname or parsed.username is not None:
+                raise SyncError('COROS returned an invalid download URL')
+            headers = self.getHeaders() if parsed.netloc == urlsplit(self.teamapi).netloc else {}
+            response = self._request('COROS download', 'GET', url, read=True, headers=headers, preload_content=False)
+            try:
+                if response.status in (301, 302, 303, 307, 308) and response.headers.get('Location'):
+                    url = urljoin(url, response.headers['Location'])
+                    continue
+                if response.status != 200:
+                    raise SyncError(f'COROS download: HTTP {response.status}')
+                return response.read(MAX_BYTES + 1)
+            except urllib3.exceptions.HTTPError as error:
+                raise SyncError('COROS download: read failed') from error
+            finally:
+                response.close()
+                response.release_conn()
+        raise SyncError('COROS download exceeded the redirect limit')
 
+    def upload_object(self, path):
+        self.ensure_session()
+        path = Path(path)
+        checksum = calculate_md5_file(path)
+        credentials = self.getOssCredentials()
+        is_aws = 'SessionToken' in credentials
+        service = 'aws' if is_aws else 'aliyun'
+        uploader = (AwsOssClient if is_aws else AliOssClient)(credentials)
+        try:
+            key = uploader.multipart_upload(path, f'{self.userId}/{checksum}.zip')
+        except Exception as error:
+            raise SyncError(f'COROS {service} object upload failed ({type(error).__name__})') from error
+        if key != f'fit_zip/{self.userId}/{checksum}.zip':
+            raise SyncError(f'COROS {service} did not confirm the expected object key')
+        return ObjectUpload(key, credentials['Bucket'], service, checksum, path.stat().st_size)
 
-class CorosActivityUploadError(Exception):
+    def submit_import(self, uploaded, activity):
+        data = {'source': 1, 'timezone': 32, 'bucket': uploaded.bucket, 'md5': uploaded.md5,
+                'size': uploaded.size, 'object': uploaded.key, 'serviceName': uploaded.service,
+                'oriFileName': f'{activity.id}.zip'}
+        for attempt in range(2):
+            response = self._request('COROS import', 'POST', self.teamapi + '/activity/fit/import',
+                                     fields={'jsonParameter': json.dumps(data)}, headers=self.getHeaders())
+            if response.status != 401 or attempt == 1:
+                break
+            try:
+                self.login()
+            except SyncError as error:
+                raise Rejected('COROS import: HTTP 401; reauthentication failed') from error
+        if response.status not in (200, 201, 202):
+            error_type = Rejected if response.status in (401, 403, 413, 415, 422, 429) else SyncError
+            raise error_type(f'COROS import: HTTP {response.status}')
+        payload = self._json(response, 'COROS import')
+        result = payload.get('data')
+        if payload.get('result') != '0000' or not isinstance(result, dict):
+            raise SyncError('COROS import returned an unconfirmed business result')
+        task = remote_id(result.get('taskId'))
+        completed = result.get('status') in (2, '2') and not result.get('taskErrorList')
+        identity = remote_id(result.get('labelId')) if completed else ''
+        return Receipt(task, identity)
 
-    def __init__(self, status):
-        """Initialize."""
-        super(CorosActivityUploadError, self).__init__(status)
-        self.status = status
+    def lookup_import(self, task_id):
+        params = urlencode({'taskId': task_id})
+        data = self._api_read('COROS import lookup', 'GET',
+                              f'/activity/fit/exportSportImportTaskErrorList?{params}')
+        if remote_id(data.get('taskId')) != task_id:
+            return ''
+        if data.get('taskErrorList'):
+            raise SyncError('COROS import task reports errors')
+        if data.get('status') not in (2, '2'):
+            return ''
+        return remote_id(data.get('labelId'))

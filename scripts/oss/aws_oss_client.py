@@ -29,14 +29,6 @@ class AwsOssClient:
             use_threads=True  # 使用多线程
         )
 
-        # 执行上传
-        try:
-            self.client.upload_file(
-                filePath,
-                Bucket=self.bucket,
-                Key=f"fit_zip/{fileName}",
-                Config=config
-            )
-            print(f"File {fileName} uploaded successfully!")
-        except Exception as e:
-            print(f"Upload failed: {e}")
+        key = f"fit_zip/{fileName}"
+        self.client.upload_file(filePath, Bucket=self.bucket, Key=key, Config=config)
+        return key

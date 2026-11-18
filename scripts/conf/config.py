@@ -10,6 +10,8 @@ SYNC_CONFIG = {
     'SOURCE': '',
     'TARGET': '',
     'SYNC_ACTIVITY_START_TIME': '',
+    'SYNC_ACTIVITY_ID': '',
+    'SYNC_TIMEZONE': '',
     'GARMIN_GLOBAL_EMAIL': '',
     'GARMIN_GLOBAL_PASSWORD': '',
     'GARMIN_CN_EMAIL': '',
@@ -63,6 +65,8 @@ def get_argv():
     parser.add_argument("--SOURCE", default="")
     parser.add_argument("--TARGET", default="")
     parser.add_argument("--SYNC_ACTIVITY_START_TIME", default="")
+    parser.add_argument("--SYNC_ACTIVITY_ID", default="")
+    parser.add_argument("--SYNC_TIMEZONE", default="")
     parser.add_argument("--GARMIN_GLOBAL_EMAIL", default="")  # 可选参数以--开头
     parser.add_argument("--GARMIN_GLOBAL_PASSWORD", default="")
     parser.add_argument("--GARMIN_CN_EMAIL", default="")  # 可选参数以--开头
@@ -87,7 +91,7 @@ argv = get_argv()
 for k in SYNC_CONFIG:
     if argv.__dict__.get(k):
         SYNC_CONFIG[k] = argv.__dict__.get(k)
-        logger.warning(f"Loaded configuration value {k} = {str(SYNC_CONFIG[k])} from command-line arguments.")
+        logger.info("Loaded configuration %s from command-line arguments.", k)
     elif os.getenv(k):
         SYNC_CONFIG[k] = os.getenv(k)
     # 否则使用从配置文件加载的值或默认空值
