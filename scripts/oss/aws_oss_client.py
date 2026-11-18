@@ -1,49 +1,23 @@
-import urllib3
-import json
 import boto3
-import certifi
 
 from boto3.s3.transfer import TransferConfig
 
-from oss.sts_token_error import StsTokenError
-from utils.coros_oss_credients_utils import decode
-
 
 class AwsOssClient:
-    def __init__(self, bucket="eu-coros", service="aws", app_id="1660188068672619112",
-                 sign="877571111A1EE5316E4B590103D4B5B3", v=2):
-        self.bucket = bucket
-        self.service = service
-        self.app_id = app_id
-        self.sign = sign
-        self.credentials = None
-        self.access_key_id = None
-        self.access_key_secret = None
-        self.req = urllib3.PoolManager(cert_reqs='CERT_REQUIRED', ca_certs=certifi.where())
-        self.v = v
+    def __init__(self, credentials):
+        self.bucket = credentials['Bucket']
+        self.credentials = credentials
         self.client = None
         self.initClient()
 
     def initClient(self):
-        sts_token_url = f"https://faq.coros.com/openapi/oss/sts?bucket={self.bucket}&service={self.service}&app_id={self.app_id}&sign={self.sign}&v={self.v}"
-
-        response = self.req.request('GET', sts_token_url)
-
-        sts_token_response = json.loads(response.data)
-        if sts_token_response["code"] != 200:
-            raise StsTokenError("Failed to retrieve the AWS OSS STS token.")
-
-        credentials = sts_token_response["data"]["credentials"]
-        v = sts_token_response["data"]["v"]
-        self.credentials = credentials
-        self.v = v
-        credients_json = decode(credentials)
         self.client = boto3.client(
             "s3",
-            aws_access_key_id=credients_json["AccessKeyId"],
-            aws_secret_access_key=credients_json["SecretAccessKey"],
-            aws_session_token=credients_json["SessionToken"],
-            endpoint_url='https://s3.eu-central-1.amazonaws.com',
+            aws_access_key_id=self.credentials["AccessKeyId"],
+            aws_secret_access_key=self.credentials["SecretAccessKey"],
+            aws_session_token=self.credentials["SessionToken"],
+            region_name=self.credentials['Region'],
+            endpoint_url=f"https://s3.{self.credentials['Region']}.amazonaws.com",
         )
 
     def multipart_upload(self, filePath, fileName):

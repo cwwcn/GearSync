@@ -261,9 +261,9 @@ class GarminCNClient:
                 client = None
                 ## 中国区使用阿里云OSS
                 if corosClient.regionId == 2:
-                    client = AliOssClient()
+                    client = AliOssClient(corosClient.getOssCredentials())
                 elif corosClient.regionId == 1 or corosClient.regionId == 3:
-                    client = AwsOssClient()
+                    client = AwsOssClient(corosClient.getOssCredentials())
                 file_path = un_sync_info["file_path"]
                 un_sync_id = un_sync_info["un_sync_id"]
                 file_md5 = calculate_md5_file(file_path)
@@ -292,9 +292,8 @@ class GarminCNClient:
                 else:
                     logger.warning(f"Failed to upload Garmin China activity {un_sync_id} to COROS. Upload result: {upload_result}")
             except Exception as err:
-                print(err)
                 # db.updateExceptionSyncStatus(un_sync_info["un_sync_id"], source, target)
-                logger.warning(f'An error occurred while synchronizing Garmin China activity {un_sync_info["un_sync_id"]} to COROS.')
+                logger.warning(f'Failed to synchronize Garmin China activity {un_sync_info["un_sync_id"]} to COROS: {err}')
 
         # 计算失败条数
         failed_count = total_sync_count - success_count

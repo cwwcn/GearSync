@@ -4,11 +4,14 @@ import urllib3
 import json
 import hashlib
 import certifi
+from urllib.parse import quote
 
 from conf.config import SYNC_CONFIG, COROS_FIT_DIR
 from .region_config import REGIONCONFIG
 from .sts_config import STS_CONFIG_COROS
 from conf.logger_config import get_logger
+from oss.sts_token_error import StsTokenError
+from utils.coros_oss_credients_utils import decode
 
 logger = get_logger(__name__)
 
@@ -118,6 +121,53 @@ class CorosClient:
             "accesstoken": self.accessToken,
         }
         return headers
+
+    @loginCheck
+    def getOssCredentials(self):
+        region = REGIONCONFIG[self.regionId]
+        headers = self.getHeaders()
+        headers['Cookie'] = f"{region['TOKEN']}={quote(self.accessToken, safe='')}"
+        try:
+            response = self.req.request(
+                'GET',
+                f"{region['hostname']}/api/proxy/oss/sts",
+                headers=headers,
+                timeout=30,
+                redirect=False
+            )
+        except urllib3.exceptions.HTTPError as err:
+            raise StsTokenError("COROS OSS STS request failed due to a network error.") from err
+
+        content_type = response.headers.get('Content-Type', 'unknown')
+        if response.status != 200:
+            raise StsTokenError(
+                f"COROS OSS STS request failed (HTTP {response.status}, Content-Type {content_type})."
+            )
+        try:
+            payload = json.loads(response.data)
+        except (ValueError, UnicodeError) as err:
+            raise StsTokenError(
+                f"COROS OSS STS returned invalid JSON (HTTP {response.status}, Content-Type {content_type})."
+            ) from err
+        if not isinstance(payload, dict) or payload.get('code') != 200:
+            raise StsTokenError("COROS OSS STS did not return business code 200.")
+        try:
+            encoded_credentials = payload['data']['credentials']
+            if not isinstance(encoded_credentials, str):
+                raise ValueError("Invalid encoded OSS credentials")
+            credentials = decode(encoded_credentials)
+            required_keys = ('AccessKeyId', 'Bucket', 'Region')
+            if payload['data']['service'] == 'aliyun':
+                required_keys += ('AccessKeySecret', 'SecurityToken')
+            elif payload['data']['service'] == 'aws':
+                required_keys += ('SecretAccessKey', 'SessionToken')
+            else:
+                raise ValueError("Unsupported OSS service")
+            if not isinstance(credentials, dict) or any(not credentials.get(key) for key in required_keys):
+                raise ValueError("Missing OSS credential fields")
+        except (KeyError, TypeError, ValueError, UnicodeError) as err:
+            raise StsTokenError("COROS OSS STS returned invalid credentials.") from err
+        return credentials
 
     ## 获取下载链接
     @loginCheck

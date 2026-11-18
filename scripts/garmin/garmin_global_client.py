@@ -10,6 +10,7 @@ import garth as garth_module
 import requests
 from oss.ali_oss_client import AliOssClient
 from oss.aws_oss_client import AwsOssClient
+from oss.sts_token_error import StsTokenError
 from utils.md5_utils import calculate_md5_file
 from .garmin_url_dict import GARMIN_URL_DICT
 from conf.config import SYNC_CONFIG, GARMIN_GLOBAL_FIT_DIR
@@ -270,9 +271,9 @@ class GarminGlobalClient:
                 client = None
                 ## 中国区使用阿里云OSS
                 if corosClient.regionId == 2:
-                    client = AliOssClient()
+                    client = AliOssClient(corosClient.getOssCredentials())
                 elif corosClient.regionId == 1 or corosClient.regionId == 3:
-                    client = AwsOssClient()
+                    client = AwsOssClient(corosClient.getOssCredentials())
                 file_path = un_sync_info["file_path"]
                 un_sync_id = un_sync_info["un_sync_id"]
                 file_md5 = calculate_md5_file(file_path)
@@ -298,6 +299,8 @@ class GarminGlobalClient:
                     # 删除zip包
                     os.remove(file_path)
                     success_count += 1  # 增加成功计数
+            except StsTokenError as err:
+                logger.warning(f'Failed to retrieve COROS OSS credentials for Garmin Global activity {un_sync_info["un_sync_id"]}: {err}')
             except Exception as err:
                 print(err)
                 db.updateExceptionSyncStatus(un_sync_info["un_sync_id"], source, target)

@@ -10,6 +10,7 @@ import garmin.garmin_cn_client as garmin_cn_module
 import garmin.garmin_global_client as garmin_global_module
 from garmin.garmin_cn_client import GarminCNClient
 from garmin.garmin_global_client import GarminGlobalClient
+from oss.sts_token_error import StsTokenError
 from tests.support import FakeActivityDB, garmin_business_response
 
 
@@ -91,6 +92,7 @@ class GarminToCorosBehaviorTests(unittest.TestCase):
         coros_client = Mock()
         coros_client.regionId = 2
         coros_client.userId = "coros-user"
+        coros_client.getOssCredentials.return_value = {"Bucket": "coros-oss"}
         coros_client.uploadActivity.return_value = True
         db = FakeActivityDB([101])
         oss_client = Mock()
@@ -109,7 +111,7 @@ class GarminToCorosBehaviorTests(unittest.TestCase):
             )
 
         zip_path = self.fit_dir / "101.zip"
-        ali_oss_class.assert_called_once_with()
+        ali_oss_class.assert_called_once_with(coros_client.getOssCredentials.return_value)
         aws_oss_class.assert_not_called()
         oss_client.multipart_upload.assert_called_once_with(
             str(zip_path), "coros-user/fit-md5.zip"
@@ -124,6 +126,55 @@ class GarminToCorosBehaviorTests(unittest.TestCase):
         self.assertEqual(b"fit-data", (self.fit_dir / "101_ACTIVITY.fit").read_bytes())
         self.assertEqual([(101, "GARMIN_CN", "COROS")], db.synced)
         self.assertEqual((1, 1, 0), (result["total"], result["success"], result["failed"]))
+
+    def test_sts_failure_keeps_the_activity_pending_and_reports_failure(self):
+        for client_class, module, fit_dir_key, source in (
+            (GarminCNClient, garmin_cn_module, "GARMIN_CN_FIT_DIR", "GARMIN_CN"),
+            (GarminGlobalClient, garmin_global_module, "GARMIN_GLOBAL_FIT_DIR", "GARMIN_GLOBAL"),
+        ):
+            with self.subTest(source=source):
+                source_client = build_logged_in_client(client_class)
+                coros_client = Mock()
+                coros_client.regionId = 2
+                coros_client.getOssCredentials.side_effect = StsTokenError("STS HTTP 401")
+                db = FakeActivityDB([101])
+
+                with patch.object(module, fit_dir_key, str(self.fit_dir)), patch.object(
+                    module, "AliOssClient"
+                ) as oss_class, patch.object(module, "logger", Mock()):
+                    result = source_client.upload_to_coros(coros_client, db, source, "COROS")
+
+                oss_class.assert_not_called()
+                coros_client.uploadActivity.assert_not_called()
+                self.assertEqual([], db.synced)
+                self.assertEqual([], db.exceptions)
+                self.assertEqual((1, 0, 1), (result["total"], result["success"], result["failed"]))
+                self.assertTrue((self.fit_dir / "101.zip").exists())
+
+    def test_aws_coros_regions_receive_the_authenticated_credentials(self):
+        for client_class, module, fit_dir_key, source in (
+            (GarminCNClient, garmin_cn_module, "GARMIN_CN_FIT_DIR", "GARMIN_CN"),
+            (GarminGlobalClient, garmin_global_module, "GARMIN_GLOBAL_FIT_DIR", "GARMIN_GLOBAL"),
+        ):
+            for region_id in (1, 3):
+                with self.subTest(source=source, region_id=region_id):
+                    source_client = build_logged_in_client(client_class)
+                    coros_client = Mock()
+                    coros_client.regionId = region_id
+                    coros_client.userId = "coros-user"
+                    coros_client.uploadActivity.return_value = True
+                    db = FakeActivityDB([101])
+                    with patch.object(module, fit_dir_key, str(self.fit_dir)), patch.object(
+                        module, "AwsOssClient"
+                    ) as oss_class, patch.object(module, "AliOssClient") as ali_class, patch.object(
+                        module, "logger", Mock()
+                    ):
+                        result = source_client.upload_to_coros(coros_client, db, source, "COROS")
+
+                    oss_class.assert_called_once_with(coros_client.getOssCredentials.return_value)
+                    ali_class.assert_not_called()
+                    self.assertEqual([(101, source, "COROS")], db.synced)
+                    self.assertEqual(1, result["success"])
 
 
 if __name__ == "__main__":
