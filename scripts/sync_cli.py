@@ -41,7 +41,7 @@ def run_direction(source, target):
         logger.error('%s: %s', title, _error_detail(error))
         return 1
     logger.info('%s：%s', title, result.message)
-    if not only_id and NOTIFY_CONFIG.get('DD_BOT_TOKEN'):
+    if not only_id and NOTIFY_CONFIG.get('DD_BOT_TOKEN') and (result.done or result.waiting or result.failed):
         try:
             send_notification_with_retry(title, result.message)
         except Exception as error:
