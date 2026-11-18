@@ -35,3 +35,4 @@ scripts/config.ini
 /garmin-global-fit
 /db/activity-cache/
 /db/activitySync.lock
+/doc/gearsync-technical-guide.md

@@ -2,8 +2,6 @@
 
 GearSync 用于在 Garmin 中国区、Garmin 国际区和 COROS（高驰）之间同步或迁移运动数据，并提供同步结果通知和 RQrun 自动签到功能。
 
-完整的系统架构、同步状态机、SQLite 表结构、日常查询 SQL 和故障恢复步骤见[技术说明](doc/gearsync-technical-guide.md)。
-
 ## 功能
 
 - 支持 Garmin 中国区、Garmin 国际区、COROS 任意两个平台之间的双向同步，共 6 种方向。
@@ -153,8 +151,6 @@ python3 scripts/gear_sync.py \
 ```bash
 sqlite3 -readonly db/activitySync.db
 ```
-
-常见状态查询和字段解释见[技术说明：日常数据库查看](doc/gearsync-technical-guide.md#5-日常数据库查看)。
 
 ### 获取 Garmin 登录令牌
 
