@@ -1,6 +1,4 @@
-import fcntl
 import time
-from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -35,18 +33,6 @@ class RunResult:
     @property
     def message(self):
         return f'确认完成 {self.done} 条，待核对 {self.waiting} 条，失败 {self.failed} 条。'
-
-
-@contextmanager
-def run_lock(directory):
-    directory = Path(directory)
-    directory.mkdir(parents=True, exist_ok=True)
-    with (directory / 'activitySync.lock').open('a') as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as error:
-            raise SyncError('Another activity sync is already running') from error
-        yield
 
 
 def parse_cutoff(value, timezone='Asia/Shanghai'):
@@ -105,7 +91,8 @@ def discover(source, state, cutoff, now):
         if len(batch) >= PAGE_SIZE:
             state.discover(batch)
             batch = []
-    state.discover(batch, cutoff=cutoff, watermark=newest, full_scan_at=now if full else None)
+    state.discover(batch, cutoff=cutoff, watermark=newest, full_scan_at=now if full else None,
+                   checkpoint=checkpoint)
 
 
 def _activity_file(source, cache, activity, saved_hash):
@@ -280,6 +267,14 @@ def sync_activities(source, target, target_is_coros, state, cache_root, cutoff, 
             logger.error('Activity discovery failed: %s; processing the existing queue', error)
             result.failed += 1
     for row in state.outstanding(only_id):
-        outcome = _process(source, target, target_is_coros, state, cache, row)
+        with state.claim(row['activity_id']) as claimed:
+            if not claimed:
+                logger.info('Activity %s is already being handled by another sync run; skipping',
+                            row['activity_id'])
+                continue
+            current = state.transfer(row['activity_id'])
+            if current is None or current['phase'] == 'done':
+                continue
+            outcome = _process(source, target, target_is_coros, state, cache, current)
         setattr(result, outcome, getattr(result, outcome) + 1)
     return result

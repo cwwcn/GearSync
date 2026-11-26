@@ -4,7 +4,7 @@ from client_factory import create_coros_client, create_garmin_cn_client, create_
 from conf.config import DB_DIR, NOTIFY_CONFIG, SYNC_CONFIG
 from conf.logger_config import get_logger
 from db.sync_state import SyncState
-from sync_engine import _error_detail, parse_cutoff, run_lock, sync_activities
+from sync_engine import _error_detail, parse_cutoff, sync_activities
 from sync_types import SyncError, remote_id
 from utils.notify_retry import send_notification_with_retry
 
@@ -27,16 +27,15 @@ def run_direction(source, target):
         logger.error('%s', error)
         return 2
     try:
-        with run_lock(DB_DIR):
-            source_client = FACTORIES[source](logger)
-            target_client = FACTORIES[target](logger)
-            if source_client is None or target_client is None:
-                return 2
-            directory = Path(DB_DIR)
-            state = SyncState(directory / 'activitySync.db', source, source_client.account_id(),
-                              target, target_client.account_id())
-            result = sync_activities(source_client, target_client, target == 'COROS', state,
-                                     directory / 'activity-cache', cutoff, only_id=only_id)
+        source_client = FACTORIES[source](logger)
+        target_client = FACTORIES[target](logger)
+        if source_client is None or target_client is None:
+            return 2
+        directory = Path(DB_DIR)
+        state = SyncState(directory / 'activitySync.db', source, source_client.account_id(),
+                          target, target_client.account_id())
+        result = sync_activities(source_client, target_client, target == 'COROS', state,
+                                 directory / 'activity-cache', cutoff, only_id=only_id)
     except Exception as error:
         logger.error('%s: %s', title, _error_detail(error))
         return 1

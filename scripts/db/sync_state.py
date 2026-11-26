@@ -1,3 +1,4 @@
+import fcntl
 import hashlib
 import json
 import sqlite3
@@ -65,11 +66,25 @@ class SyncState:
         finally:
             db.close()
 
+    @contextmanager
+    def claim(self, activity_id):
+        key = hashlib.sha256(activity_id.encode()).hexdigest()
+        lock_directory = self.path.parent / 'activitySync-locks' / self.scope
+        lock_directory.mkdir(parents=True, exist_ok=True)
+        # Keep the lock file in place so all processes keep locking the same inode.
+        with (lock_directory / f'{key}.lock').open('a') as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                yield False
+                return
+            yield True
+
     def checkpoint(self):
         with self.connection() as db:
             return db.execute('SELECT * FROM sync_runs WHERE scope=?', (self.scope,)).fetchone()
 
-    def discover(self, activities, *, cutoff=None, watermark=None, full_scan_at=None):
+    def discover(self, activities, *, cutoff=None, watermark=None, full_scan_at=None, checkpoint=None):
         with self.connection() as db:
             db.executemany('''
                 INSERT INTO sync_transfers (scope, activity_id, start_ms, sport) VALUES (?, ?, ?, ?)
@@ -78,9 +93,13 @@ class SyncState:
                   AND (sync_transfers.start_ms<>excluded.start_ms OR sync_transfers.sport<>excluded.sport)
             ''', ((self.scope, activity.id, activity.start_ms, activity.sport) for activity in activities))
             if cutoff is not None:
+                previous = (None, None, None) if checkpoint is None else (
+                    checkpoint['cutoff'], checkpoint['watermark'], checkpoint['full_scan_at'],
+                )
                 db.execute('''
                     UPDATE sync_runs SET cutoff=?, watermark=?, full_scan_at=COALESCE(?, full_scan_at) WHERE scope=?
-                ''', (cutoff, watermark, full_scan_at, self.scope))
+                    AND (? OR (cutoff IS ? AND watermark IS ? AND full_scan_at IS ?))
+                ''', (cutoff, watermark, full_scan_at, self.scope, checkpoint is None, *previous))
 
     def outstanding(self, only_id=''):
         with self.connection() as db:

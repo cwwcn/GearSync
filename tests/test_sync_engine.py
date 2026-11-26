@@ -1,16 +1,22 @@
 import io
+import os
 import sqlite3
+import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
+import sync_engine
 from activity_files import ActivityCache, decode_activity, fit_crc
 from db.activity_db import ActivityDB
 from db.sync_state import SyncState
-from sync_engine import OVERLAP_MS, RECONCILE_DELAYS, RunResult, parse_cutoff, run_lock, scan, sync_activities
+from sync_engine import OVERLAP_MS, RECONCILE_DELAYS, RunResult, parse_cutoff, scan, sync_activities
 from sync_types import Activity, ObjectUpload, Receipt, Rejected, SyncError
 
 
@@ -287,6 +293,17 @@ class SyncEngineTests(unittest.TestCase):
         self.assertEqual(RunResult(done=1, failed=1), self.run_sync())
         self.assertEqual(NOW - 100, self.state.checkpoint()['full_scan_at'])
 
+    def test_overlapping_scan_keeps_discovered_items_without_overwriting_new_checkpoint(self):
+        previous = self.state.checkpoint()
+        self.open_state().discover([self.activity], cutoff=0, watermark=STAMP, full_scan_at=NOW,
+                                   checkpoint=previous)
+        older = Activity('1002', STAMP - 1)
+        self.state.discover([older], cutoff=1, watermark=older.start_ms, full_scan_at=NOW - 10,
+                            checkpoint=previous)
+        checkpoint = self.state.checkpoint()
+        self.assertEqual((0, STAMP, NOW), (checkpoint['cutoff'], checkpoint['watermark'], checkpoint['full_scan_at']))
+        self.assertEqual('pending', self.state.transfer(older.id)['phase'])
+
     def test_single_item_does_not_process_unrelated_pending_rows(self):
         backlog = Activity('333', STAMP - OVERLAP_MS * 2)
         self.state.discover([backlog])
@@ -315,10 +332,138 @@ class SyncGuardTests(unittest.TestCase):
     def test_time_zone_is_explicit_at_midnight(self):
         self.assertEqual(8 * 60 * 60 * 1000, parse_cutoff('20261118', 'UTC') - parse_cutoff('20261118'))
 
-    def test_run_lock_prevents_overlapping_processes(self):
-        with tempfile.TemporaryDirectory() as directory, run_lock(directory):
-            with self.assertRaisesRegex(SyncError, 'already running'), run_lock(directory):
-                self.fail('duplicate run obtained the lock')
+    def test_activity_claims_allow_distinct_activities_and_exclude_duplicates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = SyncState(Path(directory) / 'activitySync.db', 'GARMIN_CN', 'one', 'COROS', 'two')
+            with state.claim('1001') as first_claim:
+                self.assertTrue(first_claim)
+                with state.claim('1001') as duplicate_claim:
+                    self.assertFalse(duplicate_claim)
+                with state.claim('1002') as independent_claim:
+                    self.assertTrue(independent_claim)
+
+    def test_activity_claim_is_exclusive_across_processes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / 'activitySync.db'
+            state = SyncState(database, 'GARMIN_CN', 'one', 'COROS', 'two')
+            script = '''
+import sys
+from db.sync_state import SyncState
+state = SyncState(sys.argv[1], 'GARMIN_CN', 'one', 'COROS', 'two')
+with state.claim('1001') as claimed:
+    print(int(claimed))
+'''
+            environment = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1] / 'scripts'))
+            with state.claim('1001') as first_claim:
+                self.assertTrue(first_claim)
+                result = subprocess.run([sys.executable, '-c', script, str(database)], check=True,
+                                        capture_output=True, text=True, env=environment, timeout=5)
+            self.assertEqual('0', result.stdout.strip())
+
+    def test_six_directions_each_run_two_activities_concurrently(self):
+        from gear_sync import SYNC_MAP
+
+        worker = '''
+import os
+import sys
+import time
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+
+directory, source, target = sys.argv[1:]
+sys.argv[1:] = []
+import sync_cli
+from sync_types import Activity, ObjectUpload, Receipt
+from tests.test_sync_engine import STAMP, fit
+
+root = Path(directory)
+activities = [Activity('1002', STAMP + 1, '1'), Activity('1001', STAMP, '1')]
+
+def reach(stage, identity):
+    markers = root / stage
+    with (markers / identity).open('x'):
+        pass
+    deadline = time.monotonic() + 15
+    while len(list(markers.iterdir())) < 12:
+        if time.monotonic() >= deadline:
+            raise AssertionError(f'All twelve CLI runs must reach {stage} concurrently')
+        time.sleep(0.02)
+
+def list_page(page, size):
+    if page:
+        return []
+    reach('scans', str(os.getpid()))
+    return activities
+
+def submit(activity_id):
+    reach('submissions', f'{source}-{target}-{activity_id}')
+    return Receipt(remote_id=f'2{activity_id}')
+
+source_client = SimpleNamespace(account_id=lambda: source, list_page=list_page,
+                                download_activity=lambda activity: fit())
+target_client = SimpleNamespace(account_id=lambda: target,
+                                upload_activity=lambda path: submit(path.stem),
+                                upload_object=lambda path: ObjectUpload(path.stem, 'bucket', 'aliyun', 'md5', 100),
+                                submit_import=lambda uploaded, activity: submit(activity.id))
+with patch('socket.socket.connect', side_effect=AssertionError('offline test')), patch.object(
+    sync_cli, 'DB_DIR', directory,
+), patch.dict(sync_cli.FACTORIES, {source: lambda logger: source_client, target: lambda logger: target_client},
+              clear=True), patch.dict(sync_cli.SYNC_CONFIG, {}, clear=True), patch.dict(
+    sync_cli.NOTIFY_CONFIG, {}, clear=True,
+):
+    raise SystemExit(sync_cli.run_direction(source, target))
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'scans').mkdir()
+            (root / 'submissions').mkdir()
+            project = Path(__file__).resolve().parents[1]
+            environment = dict(os.environ, PYTHONPATH=str(project / 'scripts'))
+
+            def run(source, target):
+                return subprocess.run([sys.executable, '-c', worker, directory, source, target],
+                                      cwd=project, env=environment, capture_output=True, text=True, timeout=25)
+
+            with ThreadPoolExecutor(max_workers=12) as pool:
+                futures = [pool.submit(run, source, target) for source, target in SYNC_MAP for _ in range(2)]
+                results = [future.result() for future in futures]
+            for result in results:
+                self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+                self.assertIn('确认完成 1 条，待核对 0 条，失败 0 条', result.stdout + result.stderr)
+
+            with sqlite3.connect(root / 'activitySync.db') as database:
+                confirmed = database.execute('''
+                    SELECT COUNT(*) FROM sync_transfers WHERE phase='done' GROUP BY scope
+                ''').fetchall()
+                self.assertEqual([(2,)] * 6, confirmed)
+
+    def test_duplicate_runs_only_claim_an_activity_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = SyncState(Path(directory) / 'activitySync.db', 'GARMIN_CN', 'one', 'COROS', 'two')
+            activity = Activity('1001', STAMP)
+            state.discover([activity])
+            entered = Event()
+            release = Event()
+
+            def process(*args):
+                entered.set()
+                release.wait(timeout=5)
+                return 'done'
+
+            source = SimpleNamespace()
+            target = SimpleNamespace()
+            with patch.object(sync_engine, '_process', side_effect=process) as process_mock:
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    first = pool.submit(sync_activities, source, target, False, state,
+                                        Path(directory) / 'cache', 0, only_id=activity.id, now=NOW)
+                    self.assertTrue(entered.wait(timeout=3))
+                    second = pool.submit(sync_activities, source, target, False, state,
+                                         Path(directory) / 'cache', 0, only_id=activity.id, now=NOW)
+                    self.assertEqual(RunResult(), second.result(timeout=3))
+                    release.set()
+                    self.assertEqual(RunResult(done=1), first.result(timeout=3))
+                process_mock.assert_called_once()
 
     def test_repeated_page_is_not_treated_as_completed_scan(self):
         source = SimpleNamespace(list_page=list_adapter([Activity('1', STAMP)], [Activity('1', STAMP)]))
